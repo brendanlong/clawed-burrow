@@ -142,6 +142,7 @@ vite.config.ts.timestamp-*
 /generated/prisma
 /prisma/*.db
 /prisma/*.db-journal
+/prisma/data/
 
 # Data directory
 /data/
