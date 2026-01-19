@@ -146,3 +146,6 @@ vite.config.ts.timestamp-*
 
 # Data directory
 /data/
+
+# Annoying things that change constantly
+next-env.d.ts
