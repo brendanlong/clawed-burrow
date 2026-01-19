@@ -8,3 +8,4 @@
 - Prefer to use real versions of necessary systems for integration tests (i.e. actually run git in a tmp dir, actually run SQLite on an in-memory DB)
 - Try to do work in commit-sized chunks and commit when each piece is complete
 - Always use cursor-based pagination and never offset
+- Use pnpm instead of npm

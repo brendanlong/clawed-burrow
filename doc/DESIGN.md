@@ -218,10 +218,10 @@ FROM nvidia/cuda:12.1-base-ubuntu22.04
 
 # Install dependencies
 RUN apt-get update && apt-get install -y \
-    curl git docker.io nodejs npm \
+    curl git docker.io nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code
+# Install Claude Code globally via npm (npm comes with nodejs)
 RUN npm install -g @anthropic-ai/claude-code
 
 # Working directory

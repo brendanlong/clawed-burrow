@@ -25,7 +25,7 @@ A self-hosted web application that provides mobile-friendly access to Claude Cod
 ```bash
 git clone https://github.com/yourusername/claude-code-local-web.git
 cd claude-code-local-web
-npm install
+pnpm install
 ```
 
 ### 2. Configure Environment
@@ -48,13 +48,13 @@ npx prisma migrate dev
 ### 4. Build the Claude Code Runner Image
 
 ```bash
-npm run docker:build
+pnpm run docker:build
 ```
 
 ### 5. Start the Application
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 Visit `http://localhost:3000` to access the application.
@@ -142,19 +142,19 @@ The application uses NVIDIA Container Toolkit for GPU access. Ensure you have:
 
 ```bash
 # Run in development mode
-npm run dev
+pnpm run dev
 
 # Run database migrations
-npm run db:migrate
+pnpm run db:migrate
 
 # Generate Prisma client
-npm run db:generate
+pnpm run db:generate
 
 # Build for production
-npm run build
+pnpm run build
 
 # Start production server
-npm start
+pnpm start
 ```
 
 ## Security Considerations
