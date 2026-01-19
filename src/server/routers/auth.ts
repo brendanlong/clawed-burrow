@@ -1,8 +1,8 @@
-import { z } from "zod";
-import { router, publicProcedure, protectedProcedure } from "../trpc";
-import { prisma } from "@/lib/prisma";
-import { hashPassword, verifyPassword, createToken, loginSchema } from "@/lib/auth";
-import { TRPCError } from "@trpc/server";
+import { z } from 'zod';
+import { router, publicProcedure, protectedProcedure } from '../trpc';
+import { prisma } from '@/lib/prisma';
+import { hashPassword, verifyPassword, createToken, loginSchema } from '@/lib/auth';
+import { TRPCError } from '@trpc/server';
 
 export const authRouter = router({
   login: publicProcedure.input(loginSchema).mutation(async ({ input }) => {
@@ -12,8 +12,8 @@ export const authRouter = router({
 
     if (!user) {
       throw new TRPCError({
-        code: "UNAUTHORIZED",
-        message: "Invalid username or password",
+        code: 'UNAUTHORIZED',
+        message: 'Invalid username or password',
       });
     }
 
@@ -21,8 +21,8 @@ export const authRouter = router({
 
     if (!valid) {
       throw new TRPCError({
-        code: "UNAUTHORIZED",
-        message: "Invalid username or password",
+        code: 'UNAUTHORIZED',
+        message: 'Invalid username or password',
       });
     }
 
@@ -46,8 +46,8 @@ export const authRouter = router({
       const userCount = await prisma.user.count();
       if (userCount > 0) {
         throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Registration is disabled. Contact the administrator.",
+          code: 'FORBIDDEN',
+          message: 'Registration is disabled. Contact the administrator.',
         });
       }
 
@@ -57,8 +57,8 @@ export const authRouter = router({
 
       if (existing) {
         throw new TRPCError({
-          code: "CONFLICT",
-          message: "Username already taken",
+          code: 'CONFLICT',
+          message: 'Username already taken',
         });
       }
 
@@ -87,8 +87,8 @@ export const authRouter = router({
 
     if (!user) {
       throw new TRPCError({
-        code: "NOT_FOUND",
-        message: "User not found",
+        code: 'NOT_FOUND',
+        message: 'User not found',
       });
     }
 

@@ -1,12 +1,12 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback, use } from "react";
-import Link from "next/link";
-import { AuthGuard } from "@/components/AuthGuard";
-import { Header } from "@/components/Header";
-import { MessageList } from "@/components/MessageList";
-import { PromptInput } from "@/components/PromptInput";
-import { trpc } from "@/lib/trpc";
+import { useState, useEffect, useCallback, use } from 'react';
+import Link from 'next/link';
+import { AuthGuard } from '@/components/AuthGuard';
+import { Header } from '@/components/Header';
+import { MessageList } from '@/components/MessageList';
+import { PromptInput } from '@/components/PromptInput';
+import { trpc } from '@/lib/trpc';
 
 interface Message {
   id: string;
@@ -34,15 +34,13 @@ function SessionHeader({
   isStarting: boolean;
   isStopping: boolean;
 }) {
-  const repoName = session.repoUrl
-    .replace("https://github.com/", "")
-    .replace(".git", "");
+  const repoName = session.repoUrl.replace('https://github.com/', '').replace('.git', '');
 
   const statusColors: Record<string, string> = {
-    running: "bg-green-100 text-green-800",
-    stopped: "bg-gray-100 text-gray-800",
-    creating: "bg-yellow-100 text-yellow-800",
-    error: "bg-red-100 text-red-800",
+    running: 'bg-green-100 text-green-800',
+    stopped: 'bg-gray-100 text-gray-800',
+    creating: 'bg-yellow-100 text-yellow-800',
+    error: 'bg-red-100 text-red-800',
   };
 
   return (
@@ -50,12 +48,7 @@ function SessionHeader({
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Link href="/" className="text-gray-400 hover:text-gray-600">
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -81,22 +74,22 @@ function SessionHeader({
             {session.status}
           </span>
 
-          {session.status === "stopped" && (
+          {session.status === 'stopped' && (
             <button
               onClick={onStart}
               disabled={isStarting}
               className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
             >
-              {isStarting ? "Starting..." : "Start"}
+              {isStarting ? 'Starting...' : 'Start'}
             </button>
           )}
-          {session.status === "running" && (
+          {session.status === 'running' && (
             <button
               onClick={onStop}
               disabled={isStopping}
               className="px-3 py-1 text-sm bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50"
             >
-              {isStopping ? "Stopping..." : "Stop"}
+              {isStopping ? 'Stopping...' : 'Stop'}
             </button>
           )}
         </div>
@@ -120,12 +113,11 @@ function SessionView({ sessionId }: { sessionId: string }) {
   } = trpc.sessions.get.useQuery({ sessionId });
 
   // Fetch initial message history
-  const { data: historyData, isLoading: historyLoading } =
-    trpc.claude.getHistory.useQuery({
-      sessionId,
-      limit: 50,
-      direction: "before",
-    });
+  const { data: historyData, isLoading: historyLoading } = trpc.claude.getHistory.useQuery({
+    sessionId,
+    limit: 50,
+    direction: 'before',
+  });
 
   // Check if Claude is running
   const { data: runningData } = trpc.claude.isRunning.useQuery(
@@ -168,7 +160,7 @@ function SessionView({ sessionId }: { sessionId: string }) {
 
   const handleSendPrompt = useCallback(
     async (prompt: string) => {
-      if (!sessionData?.session || sessionData.session.status !== "running") {
+      if (!sessionData?.session || sessionData.session.status !== 'running') {
         return;
       }
 
@@ -179,11 +171,11 @@ function SessionView({ sessionId }: { sessionId: string }) {
       try {
         // The actual streaming would happen via subscription
         // This is a simplified version that just polls for updates
-        const response = await fetch("/api/trpc/claude.send", {
-          method: "POST",
+        const response = await fetch('/api/trpc/claude.send', {
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
           },
           body: JSON.stringify({
             json: { sessionId, prompt },
@@ -191,22 +183,21 @@ function SessionView({ sessionId }: { sessionId: string }) {
         });
 
         if (!response.ok) {
-          throw new Error("Failed to send message");
+          throw new Error('Failed to send message');
         }
 
         // Poll for new messages
         const pollForMessages = async () => {
-          const latestSeq =
-            messages.length > 0 ? messages[messages.length - 1].sequence : 0;
+          const latestSeq = messages.length > 0 ? messages[messages.length - 1].sequence : 0;
 
           const newMessagesResponse = await fetch(
             `/api/trpc/claude.getHistory?batch=1&input=${encodeURIComponent(
               JSON.stringify({
-                "0": {
+                '0': {
                   json: {
                     sessionId,
                     cursor: latestSeq,
-                    direction: "after",
+                    direction: 'after',
                     limit: 100,
                   },
                 },
@@ -214,7 +205,7 @@ function SessionView({ sessionId }: { sessionId: string }) {
             )}`,
             {
               headers: {
-                Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
               },
             }
           );
@@ -252,7 +243,7 @@ function SessionView({ sessionId }: { sessionId: string }) {
         // Also check immediately
         await pollForMessages();
       } catch (error) {
-        console.error("Error sending message:", error);
+        console.error('Error sending message:', error);
         setIsClaudeRunning(false);
       }
     },
@@ -271,11 +262,11 @@ function SessionView({ sessionId }: { sessionId: string }) {
       const response = await fetch(
         `/api/trpc/claude.getHistory?batch=1&input=${encodeURIComponent(
           JSON.stringify({
-            "0": {
+            '0': {
               json: {
                 sessionId,
                 cursor: oldestCursor,
-                direction: "before",
+                direction: 'before',
                 limit: 50,
               },
             },
@@ -283,7 +274,7 @@ function SessionView({ sessionId }: { sessionId: string }) {
         )}`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+            Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
           },
         }
       );
@@ -309,7 +300,7 @@ function SessionView({ sessionId }: { sessionId: string }) {
         setHasMore(moreAvailable);
       }
     } catch (error) {
-      console.error("Error loading more messages:", error);
+      console.error('Error loading more messages:', error);
     } finally {
       setIsLoadingMore(false);
     }
@@ -357,17 +348,13 @@ function SessionView({ sessionId }: { sessionId: string }) {
         onSubmit={handleSendPrompt}
         onInterrupt={handleInterrupt}
         isRunning={isClaudeRunning}
-        disabled={session.status !== "running"}
+        disabled={session.status !== 'running'}
       />
     </div>
   );
 }
 
-export default function SessionPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
 
   return (

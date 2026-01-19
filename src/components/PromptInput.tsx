@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from 'react';
 
 interface PromptInputProps {
   onSubmit: (prompt: string) => void;
@@ -9,22 +9,14 @@ interface PromptInputProps {
   disabled: boolean;
 }
 
-export function PromptInput({
-  onSubmit,
-  onInterrupt,
-  isRunning,
-  disabled,
-}: PromptInputProps) {
-  const [prompt, setPrompt] = useState("");
+export function PromptInput({ onSubmit, onInterrupt, isRunning, disabled }: PromptInputProps) {
+  const [prompt, setPrompt] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${Math.min(
-        textareaRef.current.scrollHeight,
-        200
-      )}px`;
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
   }, [prompt]);
 
@@ -32,12 +24,12 @@ export function PromptInput({
     e.preventDefault();
     if (prompt.trim() && !disabled && !isRunning) {
       onSubmit(prompt.trim());
-      setPrompt("");
+      setPrompt('');
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
     }
@@ -54,10 +46,10 @@ export function PromptInput({
             onKeyDown={handleKeyDown}
             placeholder={
               disabled
-                ? "Session is not running"
+                ? 'Session is not running'
                 : isRunning
-                ? "Claude is thinking..."
-                : "Type your message... (Enter to send, Shift+Enter for new line)"
+                  ? 'Claude is thinking...'
+                  : 'Type your message... (Enter to send, Shift+Enter for new line)'
             }
             disabled={disabled || isRunning}
             rows={1}

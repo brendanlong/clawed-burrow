@@ -1,7 +1,7 @@
-import { execInContainer, findProcessInContainer, sendSignalToExec } from "./docker";
-import { prisma } from "@/lib/prisma";
-import { MessageType } from "@/lib/types";
-import { v4 as uuid } from "uuid";
+import { execInContainer, findProcessInContainer, sendSignalToExec } from './docker';
+import { prisma } from '@/lib/prisma';
+import type { MessageType } from '@/lib/types';
+import { v4 as uuid } from 'uuid';
 
 export interface ClaudeMessage {
   id: string;
@@ -21,13 +21,13 @@ export async function runClaudeCommand(
 ): Promise<void> {
   // Check if session already has a running process
   if (runningProcesses.has(sessionId)) {
-    throw new Error("A Claude process is already running for this session");
+    throw new Error('A Claude process is already running for this session');
   }
 
   // Get the next sequence number for this session
   const lastMessage = await prisma.message.findFirst({
     where: { sessionId },
-    orderBy: { sequence: "desc" },
+    orderBy: { sequence: 'desc' },
     select: { sequence: true },
   });
 
@@ -39,28 +39,28 @@ export async function runClaudeCommand(
       id: uuid(),
       sessionId,
       sequence: sequence++,
-      type: "user",
-      content: JSON.stringify({ type: "user", content: prompt }),
+      type: 'user',
+      content: JSON.stringify({ type: 'user', content: prompt }),
     },
   });
 
   onMessage({
     id: userMessage.id,
-    type: "user",
-    content: { type: "user", content: prompt },
+    type: 'user',
+    content: { type: 'user', content: prompt },
     sequence: userMessage.sequence,
   });
 
   // Build the Claude command
   const command = [
-    "claude",
-    "-p",
+    'claude',
+    '-p',
     prompt,
-    "--session-id",
+    '--session-id',
     sessionId,
-    "--output-format",
-    "stream-json",
-    "--dangerously-skip-permissions",
+    '--output-format',
+    'stream-json',
+    '--dangerously-skip-permissions',
   ];
 
   runningProcesses.set(sessionId, { containerId, pid: null });
@@ -70,7 +70,7 @@ export async function runClaudeCommand(
 
     // Try to find the PID of the claude process
     setTimeout(async () => {
-      const pid = await findProcessInContainer(containerId, "claude");
+      const pid = await findProcessInContainer(containerId, 'claude');
       const process = runningProcesses.get(sessionId);
       if (process && pid) {
         process.pid = pid;
@@ -90,18 +90,18 @@ async function processClaudeStream(
   onMessage: (message: ClaudeMessage) => void
 ): Promise<void> {
   let sequence = startSequence;
-  let buffer = "";
+  let buffer = '';
 
   return new Promise((resolve, reject) => {
-    stream.on("data", async (chunk: Buffer) => {
+    stream.on('data', async (chunk: Buffer) => {
       // Docker multiplexed stream has 8-byte header
       // Skip header bytes and get actual content
       const data = stripDockerHeader(chunk);
       buffer += data;
 
       // Process complete lines
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || ""; // Keep incomplete line in buffer
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
       for (const line of lines) {
         if (!line.trim()) continue;
@@ -128,16 +128,16 @@ async function processClaudeStream(
           });
         } catch {
           // Non-JSON output, treat as system message
-          console.error("Failed to parse Claude output:", line);
+          console.error('Failed to parse Claude output:', line);
         }
       }
     });
 
-    stream.on("end", () => {
+    stream.on('end', () => {
       resolve();
     });
 
-    stream.on("error", (err) => {
+    stream.on('error', (err) => {
       reject(err);
     });
   });
@@ -150,23 +150,23 @@ function stripDockerHeader(chunk: Buffer): string {
     const streamType = chunk[0];
     if (streamType === 1 || streamType === 2) {
       // stdout or stderr
-      return chunk.slice(8).toString("utf-8");
+      return chunk.slice(8).toString('utf-8');
     }
   }
-  return chunk.toString("utf-8");
+  return chunk.toString('utf-8');
 }
 
 function mapClaudeMessageType(type: string): MessageType {
   switch (type) {
-    case "user":
-      return "user";
-    case "assistant":
-      return "assistant";
-    case "result":
-      return "result";
-    case "system":
+    case 'user':
+      return 'user';
+    case 'assistant':
+      return 'assistant';
+    case 'result':
+      return 'result';
+    case 'system':
     default:
-      return "system";
+      return 'system';
   }
 }
 
@@ -178,14 +178,14 @@ export async function interruptClaude(sessionId: string): Promise<boolean> {
   }
 
   if (process.pid) {
-    await sendSignalToExec(process.containerId, process.pid, "SIGINT");
+    await sendSignalToExec(process.containerId, process.pid, 'SIGINT');
     return true;
   }
 
   // Try to find the process if PID wasn't captured earlier
-  const pid = await findProcessInContainer(process.containerId, "claude");
+  const pid = await findProcessInContainer(process.containerId, 'claude');
   if (pid) {
-    await sendSignalToExec(process.containerId, pid, "SIGINT");
+    await sendSignalToExec(process.containerId, pid, 'SIGINT');
     return true;
   }
 

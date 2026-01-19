@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useState } from "react";
+import { useState } from 'react';
 
 interface ToolCall {
   name: string;
@@ -26,7 +26,7 @@ function ToolCallDisplay({ tool }: { tool: ToolCall }) {
         className="w-full px-3 py-2 bg-gray-50 text-left flex items-center justify-between text-sm hover:bg-gray-100"
       >
         <span className="font-mono text-blue-600">{tool.name}</span>
-        <span className="text-gray-400">{expanded ? "−" : "+"}</span>
+        <span className="text-gray-400">{expanded ? '−' : '+'}</span>
       </button>
 
       {expanded && (
@@ -41,7 +41,7 @@ function ToolCallDisplay({ tool }: { tool: ToolCall }) {
             <div>
               <div className="text-gray-500 mb-1">Output:</div>
               <pre className="bg-gray-50 p-2 rounded overflow-x-auto max-h-48 overflow-y-auto">
-                {typeof tool.output === "string"
+                {typeof tool.output === 'string'
                   ? tool.output
                   : JSON.stringify(tool.output, null, 2)}
               </pre>
@@ -54,20 +54,20 @@ function ToolCallDisplay({ tool }: { tool: ToolCall }) {
 }
 
 function renderContent(content: unknown): React.ReactNode {
-  if (typeof content === "string") {
+  if (typeof content === 'string') {
     return <p className="whitespace-pre-wrap">{content}</p>;
   }
 
   if (Array.isArray(content)) {
     return content.map((item, index) => {
-      if (typeof item === "string") {
+      if (typeof item === 'string') {
         return (
           <p key={index} className="whitespace-pre-wrap">
             {item}
           </p>
         );
       }
-      if (item && typeof item === "object" && "text" in item) {
+      if (item && typeof item === 'object' && 'text' in item) {
         return (
           <p key={index} className="whitespace-pre-wrap">
             {String(item.text)}
@@ -85,29 +85,25 @@ export function MessageBubble({ message }: { message: { type: string; content: u
   const { type } = message;
   const content = (message.content || {}) as MessageContent;
 
-  const isUser = type === "user";
-  const isAssistant = type === "assistant";
-  const isSystem = type === "system";
-  const isResult = type === "result";
+  const isUser = type === 'user';
+  const isAssistant = type === 'assistant';
+  const isSystem = type === 'system';
+  const isResult = type === 'result';
 
   const bubbleClass = isUser
-    ? "bg-blue-600 text-white ml-auto"
+    ? 'bg-blue-600 text-white ml-auto'
     : isAssistant
-    ? "bg-white border border-gray-200"
-    : isSystem
-    ? "bg-gray-100 text-gray-600 text-sm"
-    : isResult
-    ? "bg-green-50 border border-green-200 text-green-800 text-sm"
-    : "bg-gray-100";
+      ? 'bg-white border border-gray-200'
+      : isSystem
+        ? 'bg-gray-100 text-gray-600 text-sm'
+        : isResult
+          ? 'bg-green-50 border border-green-200 text-green-800 text-sm'
+          : 'bg-gray-100';
 
   return (
     <div className={`max-w-[85%] rounded-lg p-4 ${bubbleClass}`}>
-      {isSystem && (
-        <div className="text-xs font-medium text-gray-500 mb-1">System</div>
-      )}
-      {isResult && (
-        <div className="text-xs font-medium text-green-600 mb-1">Result</div>
-      )}
+      {isSystem && <div className="text-xs font-medium text-gray-500 mb-1">System</div>}
+      {isResult && <div className="text-xs font-medium text-green-600 mb-1">Result</div>}
 
       {renderContent(content.content)}
 
@@ -122,7 +118,7 @@ export function MessageBubble({ message }: { message: { type: string; content: u
       {isResult && content.result !== undefined && (
         <pre className="mt-2 bg-white p-2 rounded text-xs overflow-x-auto">
           {String(
-            typeof content.result === "string"
+            typeof content.result === 'string'
               ? content.result
               : JSON.stringify(content.result, null, 2)
           )}

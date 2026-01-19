@@ -92,14 +92,14 @@ docker compose up -d
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | SQLite database path | `file:./data/dev.db` |
-| `JWT_SECRET` | Secret for JWT tokens (min 32 chars) | Required |
-| `GITHUB_TOKEN` | GitHub Personal Access Token | Required for repo access |
-| `CLAUDE_AUTH_PATH` | Path to Claude Code auth directory | `/root/.claude` |
-| `DATA_DIR` | Directory for repos and worktrees | `/data` |
-| `NODE_ENV` | Node environment | `development` |
+| Variable           | Description                          | Default                  |
+| ------------------ | ------------------------------------ | ------------------------ |
+| `DATABASE_URL`     | SQLite database path                 | `file:./data/dev.db`     |
+| `JWT_SECRET`       | Secret for JWT tokens (min 32 chars) | Required                 |
+| `GITHUB_TOKEN`     | GitHub Personal Access Token         | Required for repo access |
+| `CLAUDE_AUTH_PATH` | Path to Claude Code auth directory   | `/root/.claude`          |
+| `DATA_DIR`         | Directory for repos and worktrees    | `/data`                  |
+| `NODE_ENV`         | Node environment                     | `development`            |
 
 ### GPU Support
 
@@ -174,6 +174,7 @@ npm start
 ### Container won't start with GPU
 
 Ensure NVIDIA Container Toolkit is properly installed:
+
 ```bash
 docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 ```
@@ -181,6 +182,7 @@ docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 ### Claude Code authentication errors
 
 Make sure your Claude Code auth is properly mounted:
+
 ```bash
 # Check if auth exists
 ls -la ~/.claude/
@@ -191,6 +193,7 @@ ls -la ~/.claude/
 ### Database errors
 
 Reset the database:
+
 ```bash
 rm -rf prisma/data
 npx prisma migrate dev

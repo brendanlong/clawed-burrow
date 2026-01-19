@@ -1,9 +1,8 @@
-import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
-import { prisma } from "@/lib/prisma";
-import { TRPCError } from "@trpc/server";
-import { runClaudeCommand, interruptClaude, isClaudeRunning } from "../services/claude-runner";
-import { observable } from "@trpc/server/observable";
+import { z } from 'zod';
+import { router, protectedProcedure } from '../trpc';
+import { prisma } from '@/lib/prisma';
+import { TRPCError } from '@trpc/server';
+import { runClaudeCommand, interruptClaude, isClaudeRunning } from '../services/claude-runner';
 
 export const claudeRouter = router({
   send: protectedProcedure
@@ -20,22 +19,22 @@ export const claudeRouter = router({
 
       if (!session) {
         throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Session not found",
+          code: 'NOT_FOUND',
+          message: 'Session not found',
         });
       }
 
-      if (session.status !== "running" || !session.containerId) {
+      if (session.status !== 'running' || !session.containerId) {
         throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message: "Session is not running",
+          code: 'PRECONDITION_FAILED',
+          message: 'Session is not running',
         });
       }
 
       if (isClaudeRunning(input.sessionId)) {
         throw new TRPCError({
-          code: "CONFLICT",
-          message: "Claude is already running for this session",
+          code: 'CONFLICT',
+          message: 'Claude is already running for this session',
         });
       }
 
@@ -49,15 +48,10 @@ export const claudeRouter = router({
       let isComplete = false;
       let error: unknown = null;
 
-      // Start the Claude process
-      const processPromise = runClaudeCommand(
-        input.sessionId,
-        session.containerId,
-        input.prompt,
-        (message) => {
-          messageQueue.push(message);
-        }
-      )
+      // Start the Claude process (runs in background while we yield messages)
+      runClaudeCommand(input.sessionId, session.containerId, input.prompt, (message) => {
+        messageQueue.push(message);
+      })
         .then(() => {
           isComplete = true;
         })
@@ -79,8 +73,8 @@ export const claudeRouter = router({
 
       if (error) {
         throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: error instanceof Error ? error.message : "Unknown error",
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     }),
@@ -94,8 +88,8 @@ export const claudeRouter = router({
 
       if (!session) {
         throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Session not found",
+          code: 'NOT_FOUND',
+          message: 'Session not found',
         });
       }
 
@@ -109,7 +103,7 @@ export const claudeRouter = router({
       z.object({
         sessionId: z.string().uuid(),
         cursor: z.number().int().optional(),
-        direction: z.enum(["before", "after"]).default("before"),
+        direction: z.enum(['before', 'after']).default('before'),
         limit: z.number().int().min(1).max(100).default(50),
       })
     )
@@ -120,8 +114,8 @@ export const claudeRouter = router({
 
       if (!session) {
         throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Session not found",
+          code: 'NOT_FOUND',
+          message: 'Session not found',
         });
       }
 
@@ -133,7 +127,7 @@ export const claudeRouter = router({
       };
 
       if (input.cursor !== undefined) {
-        if (input.direction === "before") {
+        if (input.direction === 'before') {
           whereClause.sequence = { lt: input.cursor };
         } else {
           whereClause.sequence = { gt: input.cursor };
@@ -143,7 +137,7 @@ export const claudeRouter = router({
       const messages = await prisma.message.findMany({
         where: whereClause,
         orderBy: {
-          sequence: input.direction === "before" ? "desc" : "asc",
+          sequence: input.direction === 'before' ? 'desc' : 'asc',
         },
         take: input.limit + 1, // Get one extra to check if there are more
       });
@@ -160,13 +154,13 @@ export const claudeRouter = router({
       }));
 
       // Reverse if we fetched in DESC order so client gets chronological order
-      if (input.direction === "before") {
+      if (input.direction === 'before') {
         parsedMessages.reverse();
       }
 
       const nextCursor =
         parsedMessages.length > 0
-          ? input.direction === "before"
+          ? input.direction === 'before'
             ? parsedMessages[0].sequence
             : parsedMessages[parsedMessages.length - 1].sequence
           : undefined;

@@ -41,12 +41,12 @@ A self-hosted web application that provides mobile-friendly access to Claude Cod
 
 ```typescript
 interface Session {
-  id: string;                    // UUID, also used as Claude Code session ID
-  name: string;                  // User-provided name
-  repoUrl: string;               // GitHub clone URL
-  branch: string;                // Branch name
-  worktreePath: string;          // Path on host filesystem
-  containerId: string | null;    // Docker container ID when running
+  id: string; // UUID, also used as Claude Code session ID
+  name: string; // User-provided name
+  repoUrl: string; // GitHub clone URL
+  branch: string; // Branch name
+  worktreePath: string; // Path on host filesystem
+  containerId: string | null; // Docker container ID when running
   status: 'creating' | 'running' | 'stopped' | 'error';
   createdAt: Date;
   updatedAt: Date;
@@ -57,11 +57,11 @@ interface Session {
 
 ```typescript
 interface Message {
-  id: string;                    // UUID from Claude Code JSON
+  id: string; // UUID from Claude Code JSON
   sessionId: string;
-  sequence: number;              // Monotonic ordering for cursor pagination
+  sequence: number; // Monotonic ordering for cursor pagination
   type: 'system' | 'assistant' | 'user' | 'result';
-  content: ClaudeCodeJsonLine;   // Raw JSON from Claude Code
+  content: ClaudeCodeJsonLine; // Raw JSON from Claude Code
   createdAt: Date;
 }
 ```
@@ -73,8 +73,8 @@ interface User {
   id: string;
   username: string;
   passwordHash: string;
-  totpSecret: string | null;     // For authenticator app
-  webauthnCredentials: WebAuthnCredential[];  // For Yubikey
+  totpSecret: string | null; // For authenticator app
+  webauthnCredentials: WebAuthnCredential[]; // For Yubikey
 }
 ```
 
@@ -105,10 +105,10 @@ github.listBranches({ repoFullName: string })
 ### Session Management
 
 ```typescript
-sessions.create({ 
+sessions.create({
   name: string,
   repoFullName: string,    // e.g., "brendanlong/math-llm"
-  branch: string 
+  branch: string
 })
   → { session: Session }
   // Internally: clones repo, creates worktree, builds/starts container
@@ -144,7 +144,7 @@ claude.interrupt({ sessionId: string })
   → { success: true }
   // Sends SIGINT to running claude process
 
-claude.getHistory({ 
+claude.getHistory({
   sessionId: string,
   cursor?: number,        // sequence number
   direction: 'before' | 'after',
@@ -244,15 +244,17 @@ async function startSessionContainer(session: Session): Promise<string> {
         `/var/run/docker.sock:/var/run/docker.sock`,
         `${CLAUDE_AUTH_PATH}:/root/.claude:ro`,
       ],
-      DeviceRequests: [{ 
-        Driver: 'nvidia',
-        Count: -1,  // all GPUs
-        Capabilities: [['gpu']] 
-      }],
+      DeviceRequests: [
+        {
+          Driver: 'nvidia',
+          Count: -1, // all GPUs
+          Capabilities: [['gpu']],
+        },
+      ],
     },
     WorkingDir: '/workspace',
   });
-  
+
   await docker.startContainer(containerId);
   return containerId;
 }
@@ -270,7 +272,7 @@ CREATE TABLE messages (
   type TEXT NOT NULL,
   content JSONB NOT NULL,
   created_at TIMESTAMP DEFAULT NOW(),
-  
+
   UNIQUE(session_id, sequence)
 );
 
@@ -280,24 +282,27 @@ CREATE INDEX idx_messages_session_sequence ON messages(session_id, sequence);
 ### Pagination Queries
 
 **Load recent (initial view):**
+
 ```sql
-SELECT * FROM messages 
-WHERE session_id = ? 
-ORDER BY sequence DESC 
+SELECT * FROM messages
+WHERE session_id = ?
+ORDER BY sequence DESC
 LIMIT 50;
 ```
 
 **Load older (scroll up):**
+
 ```sql
-SELECT * FROM messages 
+SELECT * FROM messages
 WHERE session_id = ? AND sequence < ?
-ORDER BY sequence DESC 
+ORDER BY sequence DESC
 LIMIT 50;
 ```
 
 **Poll for new (after reconnect):**
+
 ```sql
-SELECT * FROM messages 
+SELECT * FROM messages
 WHERE session_id = ? AND sequence > ?
 ORDER BY sequence ASC;
 ```

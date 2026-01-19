@@ -1,25 +1,24 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/lib/auth-context";
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { trpc } from '@/lib/trpc';
+import { useAuth } from '@/lib/auth-context';
 
 export default function LoginPage() {
   const router = useRouter();
   const { login, user } = useAuth();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
 
-  const { data: setupData, isLoading: setupLoading } =
-    trpc.auth.needsSetup.useQuery();
+  const { data: setupData, isLoading: setupLoading } = trpc.auth.needsSetup.useQuery();
 
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: (data) => {
       login(data.token, data.user);
-      router.push("/");
+      router.push('/');
     },
     onError: (err) => {
       setError(err.message);
@@ -29,7 +28,7 @@ export default function LoginPage() {
   const registerMutation = trpc.auth.register.useMutation({
     onSuccess: (data) => {
       login(data.token, data.user);
-      router.push("/");
+      router.push('/');
     },
     onError: (err) => {
       setError(err.message);
@@ -38,7 +37,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (user) {
-      router.push("/");
+      router.push('/');
     }
   }, [user, router]);
 
@@ -50,7 +49,7 @@ export default function LoginPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setError('');
 
     if (isRegistering) {
       registerMutation.mutate({ username, password });
@@ -73,11 +72,9 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h1 className="text-center text-3xl font-bold text-gray-900">
-            Claude Code Local Web
-          </h1>
+          <h1 className="text-center text-3xl font-bold text-gray-900">Claude Code Local Web</h1>
           <h2 className="mt-6 text-center text-xl text-gray-600">
-            {isRegistering ? "Create your account" : "Sign in to your account"}
+            {isRegistering ? 'Create your account' : 'Sign in to your account'}
           </h2>
           {setupData?.needsSetup && (
             <p className="mt-2 text-center text-sm text-gray-500">
@@ -95,10 +92,7 @@ export default function LoginPage() {
 
           <div className="space-y-4">
             <div>
-              <label
-                htmlFor="username"
-                className="block text-sm font-medium text-gray-700"
-              >
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700">
                 Username
               </label>
               <input
@@ -115,25 +109,20 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700"
-              >
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                 Password
               </label>
               <input
                 id="password"
                 name="password"
                 type="password"
-                autoComplete={isRegistering ? "new-password" : "current-password"}
+                autoComplete={isRegistering ? 'new-password' : 'current-password'}
                 required
                 minLength={isRegistering ? 8 : undefined}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder={
-                  isRegistering ? "At least 8 characters" : "Enter your password"
-                }
+                placeholder={isRegistering ? 'At least 8 characters' : 'Enter your password'}
               />
             </div>
           </div>
@@ -164,12 +153,12 @@ export default function LoginPage() {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                   />
                 </svg>
-                {isRegistering ? "Creating account..." : "Signing in..."}
+                {isRegistering ? 'Creating account...' : 'Signing in...'}
               </span>
             ) : isRegistering ? (
-              "Create account"
+              'Create account'
             ) : (
-              "Sign in"
+              'Sign in'
             )}
           </button>
         </form>

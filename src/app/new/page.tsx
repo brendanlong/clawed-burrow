@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { AuthGuard } from "@/components/AuthGuard";
-import { Header } from "@/components/Header";
-import { trpc } from "@/lib/trpc";
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { AuthGuard } from '@/components/AuthGuard';
+import { Header } from '@/components/Header';
+import { trpc } from '@/lib/trpc';
 
 interface Repo {
   id: number;
@@ -24,8 +24,8 @@ function RepoSelector({
   selectedRepo: Repo | null;
   onSelect: (repo: Repo) => void;
 }) {
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -45,9 +45,7 @@ function RepoSelector({
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700">
-          Search repositories
-        </label>
+        <label className="block text-sm font-medium text-gray-700">Search repositories</label>
         <input
           type="text"
           value={search}
@@ -63,9 +61,7 @@ function RepoSelector({
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
           </div>
         ) : repos.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            No repositories found
-          </div>
+          <div className="text-center py-8 text-gray-500">No repositories found</div>
         ) : (
           <ul className="divide-y divide-gray-200">
             {repos.map((repo) => (
@@ -73,23 +69,17 @@ function RepoSelector({
                 key={repo.id}
                 onClick={() => onSelect(repo)}
                 className={`px-4 py-3 cursor-pointer hover:bg-gray-50 ${
-                  selectedRepo?.id === repo.id ? "bg-blue-50" : ""
+                  selectedRepo?.id === repo.id ? 'bg-blue-50' : ''
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {repo.fullName}
-                    </p>
+                    <p className="text-sm font-medium text-gray-900">{repo.fullName}</p>
                     {repo.description && (
-                      <p className="text-xs text-gray-500 truncate max-w-md">
-                        {repo.description}
-                      </p>
+                      <p className="text-xs text-gray-500 truncate max-w-md">{repo.description}</p>
                     )}
                   </div>
-                  {repo.private && (
-                    <span className="text-xs text-gray-400">Private</span>
-                  )}
+                  {repo.private && <span className="text-xs text-gray-400">Private</span>}
                 </div>
               </li>
             ))}
@@ -100,7 +90,7 @@ function RepoSelector({
                   disabled={isFetchingNextPage}
                   className="text-sm text-blue-600 hover:text-blue-800"
                 >
-                  {isFetchingNextPage ? "Loading..." : "Load more"}
+                  {isFetchingNextPage ? 'Loading...' : 'Load more'}
                 </button>
               </li>
             )}
@@ -153,7 +143,7 @@ function BranchSelector({
         {branches.map((branch) => (
           <option key={branch.name} value={branch.name}>
             {branch.name}
-            {branch.name === data?.defaultBranch ? " (default)" : ""}
+            {branch.name === data?.defaultBranch ? ' (default)' : ''}
           </option>
         ))}
       </select>
@@ -164,9 +154,9 @@ function BranchSelector({
 function NewSessionForm() {
   const router = useRouter();
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
-  const [selectedBranch, setSelectedBranch] = useState("");
-  const [sessionName, setSessionName] = useState("");
-  const [error, setError] = useState("");
+  const [selectedBranch, setSelectedBranch] = useState('');
+  const [sessionName, setSessionName] = useState('');
+  const [error, setError] = useState('');
 
   const createMutation = trpc.sessions.create.useMutation({
     onSuccess: (data) => {
@@ -179,15 +169,15 @@ function NewSessionForm() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setError('');
 
     if (!selectedRepo) {
-      setError("Please select a repository");
+      setError('Please select a repository');
       return;
     }
 
     if (!selectedBranch) {
-      setError("Please select a branch");
+      setError('Please select a branch');
       return;
     }
 
@@ -224,7 +214,7 @@ function NewSessionForm() {
               type="text"
               value={sessionName}
               onChange={(e) => setSessionName(e.target.value)}
-              placeholder={`${selectedRepo.name} - ${selectedBranch || "branch"}`}
+              placeholder={`${selectedRepo.name} - ${selectedBranch || 'branch'}`}
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
@@ -243,7 +233,7 @@ function NewSessionForm() {
           disabled={!selectedRepo || !selectedBranch || createMutation.isPending}
           className="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {createMutation.isPending ? "Creating..." : "Create Session"}
+          {createMutation.isPending ? 'Creating...' : 'Create Session'}
         </button>
       </div>
     </form>
@@ -258,9 +248,7 @@ export default function NewSessionPage() {
 
         <main className="max-w-2xl mx-auto py-6 sm:px-6 lg:px-8">
           <div className="px-4 py-6 sm:px-0">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">
-              New Session
-            </h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-6">New Session</h1>
 
             <div className="bg-white shadow rounded-lg p-6">
               <NewSessionForm />

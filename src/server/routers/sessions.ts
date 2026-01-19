@@ -1,21 +1,17 @@
-import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
-import { prisma } from "@/lib/prisma";
-import { TRPCError } from "@trpc/server";
-import { SessionStatus } from "@/lib/types";
-import {
-  cloneOrFetchRepo,
-  createWorktree,
-  removeWorktree,
-} from "../services/git";
+import { z } from 'zod';
+import { router, protectedProcedure } from '../trpc';
+import { prisma } from '@/lib/prisma';
+import { TRPCError } from '@trpc/server';
+import type { SessionStatus } from '@/lib/types';
+import { cloneOrFetchRepo, createWorktree, removeWorktree } from '../services/git';
 import {
   createAndStartContainer,
   stopContainer,
   removeContainer,
   getContainerStatus,
-} from "../services/docker";
+} from '../services/docker';
 
-const sessionStatusSchema = z.enum(["creating", "running", "stopped", "error"]);
+const sessionStatusSchema = z.enum(['creating', 'running', 'stopped', 'error']);
 
 export const sessionsRouter = router({
   create: protectedProcedure
@@ -33,8 +29,8 @@ export const sessionsRouter = router({
           name: input.name,
           repoUrl: `https://github.com/${input.repoFullName}.git`,
           branch: input.branch,
-          worktreePath: "", // Will be updated after worktree creation
-          status: "creating",
+          worktreePath: '', // Will be updated after worktree creation
+          status: 'creating',
         },
       });
 
@@ -44,11 +40,7 @@ export const sessionsRouter = router({
         await cloneOrFetchRepo(input.repoFullName, githubToken);
 
         // Create worktree
-        const { worktreePath } = await createWorktree(
-          input.repoFullName,
-          input.branch,
-          session.id
-        );
+        const { worktreePath } = await createWorktree(input.repoFullName, input.branch, session.id);
 
         // Start container
         const containerId = await createAndStartContainer({
@@ -62,7 +54,7 @@ export const sessionsRouter = router({
           data: {
             worktreePath,
             containerId,
-            status: "running",
+            status: 'running',
           },
         });
 
@@ -71,12 +63,12 @@ export const sessionsRouter = router({
         // Mark session as error
         await prisma.session.update({
           where: { id: session.id },
-          data: { status: "error" },
+          data: { status: 'error' },
         });
 
         throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: error instanceof Error ? error.message : "Failed to create session",
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to create session',
         });
       }
     }),
@@ -92,10 +84,10 @@ export const sessionsRouter = router({
     .query(async ({ input }) => {
       const sessions = await prisma.session.findMany({
         where: input?.status ? { status: input.status } : undefined,
-        orderBy: { updatedAt: "desc" },
+        orderBy: { updatedAt: 'desc' },
         include: {
           messages: {
-            orderBy: { sequence: "desc" },
+            orderBy: { sequence: 'desc' },
             take: 1,
           },
         },
@@ -117,7 +109,7 @@ export const sessionsRouter = router({
         where: { id: input.sessionId },
         include: {
           messages: {
-            orderBy: { sequence: "desc" },
+            orderBy: { sequence: 'desc' },
             take: 1,
           },
         },
@@ -125,8 +117,8 @@ export const sessionsRouter = router({
 
       if (!session) {
         throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Session not found",
+          code: 'NOT_FOUND',
+          message: 'Session not found',
         });
       }
 
@@ -148,12 +140,12 @@ export const sessionsRouter = router({
 
       if (!session) {
         throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Session not found",
+          code: 'NOT_FOUND',
+          message: 'Session not found',
         });
       }
 
-      if (session.status === "running") {
+      if (session.status === 'running') {
         return { session };
       }
 
@@ -167,15 +159,15 @@ export const sessionsRouter = router({
           where: { id: session.id },
           data: {
             containerId,
-            status: "running",
+            status: 'running',
           },
         });
 
         return { session: updatedSession };
       } catch (error) {
         throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: error instanceof Error ? error.message : "Failed to start session",
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to start session',
         });
       }
     }),
@@ -189,8 +181,8 @@ export const sessionsRouter = router({
 
       if (!session) {
         throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Session not found",
+          code: 'NOT_FOUND',
+          message: 'Session not found',
         });
       }
 
@@ -200,7 +192,7 @@ export const sessionsRouter = router({
 
       const updatedSession = await prisma.session.update({
         where: { id: session.id },
-        data: { status: "stopped" },
+        data: { status: 'stopped' },
       });
 
       return { session: updatedSession };
@@ -215,8 +207,8 @@ export const sessionsRouter = router({
 
       if (!session) {
         throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Session not found",
+          code: 'NOT_FOUND',
+          message: 'Session not found',
         });
       }
 
@@ -250,12 +242,12 @@ export const sessionsRouter = router({
       const containerStatus = await getContainerStatus(session.containerId);
 
       let newStatus: SessionStatus = session.status as SessionStatus;
-      if (containerStatus === "not_found") {
-        newStatus = "stopped";
-      } else if (containerStatus === "stopped" && session.status === "running") {
-        newStatus = "stopped";
-      } else if (containerStatus === "running" && session.status === "stopped") {
-        newStatus = "running";
+      if (containerStatus === 'not_found') {
+        newStatus = 'stopped';
+      } else if (containerStatus === 'stopped' && session.status === 'running') {
+        newStatus = 'stopped';
+      } else if (containerStatus === 'running' && session.status === 'stopped') {
+        newStatus = 'running';
       }
 
       if (newStatus !== session.status) {

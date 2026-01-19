@@ -4,7 +4,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - '3000:3000'
     environment:
       - DATABASE_URL=file:/data/db/prod.db
       - JWT_SECRET=${JWT_SECRET}

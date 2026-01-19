@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { useRef, useEffect, useCallback } from "react";
-import { MessageBubble } from "./MessageBubble";
+import { useRef, useEffect, useCallback } from 'react';
+import { MessageBubble } from './MessageBubble';
 
 interface Message {
   id: string;
@@ -17,18 +17,13 @@ interface MessageListProps {
   onLoadMore: () => void;
 }
 
-export function MessageList({
-  messages,
-  isLoading,
-  hasMore,
-  onLoadMore,
-}: MessageListProps) {
+export function MessageList({ messages, isLoading, hasMore, onLoadMore }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
 
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
   // Auto-scroll to bottom when new messages arrive, if user was at bottom
@@ -65,7 +60,7 @@ export function MessageList({
             disabled={isLoading}
             className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
           >
-            {isLoading ? "Loading..." : "Load older messages"}
+            {isLoading ? 'Loading...' : 'Load older messages'}
           </button>
         </div>
       )}
@@ -79,9 +74,7 @@ export function MessageList({
       {messages.map((message) => (
         <div
           key={message.id}
-          className={`flex ${
-            message.type === "user" ? "justify-end" : "justify-start"
-          }`}
+          className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
         >
           <MessageBubble
             message={{

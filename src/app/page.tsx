@@ -1,16 +1,16 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { AuthGuard } from "@/components/AuthGuard";
-import { Header } from "@/components/Header";
-import { trpc } from "@/lib/trpc";
+import Link from 'next/link';
+import { AuthGuard } from '@/components/AuthGuard';
+import { Header } from '@/components/Header';
+import { trpc } from '@/lib/trpc';
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    running: "bg-green-100 text-green-800",
-    stopped: "bg-gray-100 text-gray-800",
-    creating: "bg-yellow-100 text-yellow-800",
-    error: "bg-red-100 text-red-800",
+    running: 'bg-green-100 text-green-800',
+    stopped: 'bg-gray-100 text-gray-800',
+    creating: 'bg-yellow-100 text-yellow-800',
+    error: 'bg-red-100 text-red-800',
   };
 
   return (
@@ -50,9 +50,7 @@ function SessionList() {
     return (
       <div className="text-center py-12">
         <h3 className="text-lg font-medium text-gray-900">No sessions yet</h3>
-        <p className="mt-1 text-sm text-gray-500">
-          Get started by creating a new session.
-        </p>
+        <p className="mt-1 text-sm text-gray-500">Get started by creating a new session.</p>
         <div className="mt-6">
           <Link
             href="/new"
@@ -73,15 +71,12 @@ function SessionList() {
             <div className="px-4 py-4 sm:px-6 hover:bg-gray-50">
               <div className="flex items-center justify-between">
                 <div className="flex-1 min-w-0">
-                  <Link
-                    href={`/session/${session.id}`}
-                    className="block focus:outline-none"
-                  >
+                  <Link href={`/session/${session.id}`} className="block focus:outline-none">
                     <p className="text-sm font-medium text-blue-600 truncate hover:underline">
                       {session.name}
                     </p>
                     <p className="mt-1 text-sm text-gray-500 truncate">
-                      {session.repoUrl.replace("https://github.com/", "").replace(".git", "")}
+                      {session.repoUrl.replace('https://github.com/', '').replace('.git', '')}
                       <span className="mx-1">•</span>
                       {session.branch}
                     </p>
@@ -92,7 +87,7 @@ function SessionList() {
                   <StatusBadge status={session.status} />
 
                   <div className="flex items-center space-x-2">
-                    {session.status === "stopped" && (
+                    {session.status === 'stopped' && (
                       <button
                         onClick={() => startMutation.mutate({ sessionId: session.id })}
                         disabled={startMutation.isPending}
@@ -101,7 +96,7 @@ function SessionList() {
                         Start
                       </button>
                     )}
-                    {session.status === "running" && (
+                    {session.status === 'running' && (
                       <button
                         onClick={() => stopMutation.mutate({ sessionId: session.id })}
                         disabled={stopMutation.isPending}
@@ -112,7 +107,7 @@ function SessionList() {
                     )}
                     <button
                       onClick={() => {
-                        if (confirm("Are you sure you want to delete this session?")) {
+                        if (confirm('Are you sure you want to delete this session?')) {
                           deleteMutation.mutate({ sessionId: session.id });
                         }
                       }}

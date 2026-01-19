@@ -1,8 +1,8 @@
-import { z } from "zod";
-import { router, protectedProcedure } from "../trpc";
-import { TRPCError } from "@trpc/server";
+import { z } from 'zod';
+import { router, protectedProcedure } from '../trpc';
+import { TRPCError } from '@trpc/server';
 
-const GITHUB_API = "https://api.github.com";
+const GITHUB_API = 'https://api.github.com';
 
 interface GitHubRepo {
   id: number;
@@ -20,13 +20,10 @@ interface GitHubBranch {
   protected: boolean;
 }
 
-async function githubFetch<T>(
-  path: string,
-  token?: string
-): Promise<T> {
+async function githubFetch<T>(path: string, token?: string): Promise<T> {
   const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
   };
 
   if (token) {
@@ -38,24 +35,24 @@ async function githubFetch<T>(
   if (!response.ok) {
     if (response.status === 401) {
       throw new TRPCError({
-        code: "UNAUTHORIZED",
-        message: "GitHub token is invalid or expired",
+        code: 'UNAUTHORIZED',
+        message: 'GitHub token is invalid or expired',
       });
     }
     if (response.status === 403) {
       throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "GitHub rate limit exceeded or access denied",
+        code: 'FORBIDDEN',
+        message: 'GitHub rate limit exceeded or access denied',
       });
     }
     if (response.status === 404) {
       throw new TRPCError({
-        code: "NOT_FOUND",
-        message: "GitHub resource not found",
+        code: 'NOT_FOUND',
+        message: 'GitHub resource not found',
       });
     }
     throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
+      code: 'INTERNAL_SERVER_ERROR',
       message: `GitHub API error: ${response.status}`,
     });
   }
@@ -67,13 +64,13 @@ function parseLinkHeader(header: string | null): { next?: string } {
   if (!header) return {};
 
   const links: { next?: string } = {};
-  const parts = header.split(",");
+  const parts = header.split(',');
 
   for (const part of parts) {
     const match = part.match(/<([^>]+)>;\s*rel="([^"]+)"/);
     if (match) {
       const [, url, rel] = match;
-      if (rel === "next") {
+      if (rel === 'next') {
         // Extract page number from URL
         const pageMatch = url.match(/[?&]page=(\d+)/);
         if (pageMatch) {
@@ -100,8 +97,8 @@ export const githubRouter = router({
 
       if (!token) {
         throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message: "GitHub token is not configured",
+          code: 'PRECONDITION_FAILED',
+          message: 'GitHub token is not configured',
         });
       }
 
@@ -116,17 +113,17 @@ export const githubRouter = router({
         const url = `/search/repositories?q=${query}&per_page=${input.perPage}&page=${page}`;
 
         const headers: Record<string, string> = {
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
           Authorization: `Bearer ${token}`,
         };
 
         const response = await fetch(`${GITHUB_API}${url}`, { headers });
-        linkHeader = response.headers.get("link");
+        linkHeader = response.headers.get('link');
 
         if (!response.ok) {
           throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
+            code: 'INTERNAL_SERVER_ERROR',
             message: `GitHub API error: ${response.status}`,
           });
         }
@@ -138,17 +135,17 @@ export const githubRouter = router({
         const url = `/user/repos?sort=updated&per_page=${input.perPage}&page=${page}`;
 
         const headers: Record<string, string> = {
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
           Authorization: `Bearer ${token}`,
         };
 
         const response = await fetch(`${GITHUB_API}${url}`, { headers });
-        linkHeader = response.headers.get("link");
+        linkHeader = response.headers.get('link');
 
         if (!response.ok) {
           throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
+            code: 'INTERNAL_SERVER_ERROR',
             message: `GitHub API error: ${response.status}`,
           });
         }
@@ -184,16 +181,13 @@ export const githubRouter = router({
 
       if (!token) {
         throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message: "GitHub token is not configured",
+          code: 'PRECONDITION_FAILED',
+          message: 'GitHub token is not configured',
         });
       }
 
       // Get repo info for default branch
-      const repo = await githubFetch<GitHubRepo>(
-        `/repos/${input.repoFullName}`,
-        token
-      );
+      const repo = await githubFetch<GitHubRepo>(`/repos/${input.repoFullName}`, token);
 
       // Get branches
       const branches = await githubFetch<GitHubBranch[]>(

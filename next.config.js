@@ -14,13 +14,13 @@ const nextConfig = {
       // Don't bundle native modules on the server
       config.externals = config.externals || [];
       config.externals.push({
-        'dockerode': 'commonjs dockerode',
-        'ssh2': 'commonjs ssh2',
+        dockerode: 'commonjs dockerode',
+        ssh2: 'commonjs ssh2',
         'simple-git': 'commonjs simple-git',
       });
     }
     return config;
   },
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;

@@ -1,10 +1,10 @@
-import simpleGit, { SimpleGit } from "simple-git";
-import { mkdir, rm, access } from "fs/promises";
-import { join } from "path";
-import { env } from "@/lib/env";
+import simpleGit from 'simple-git';
+import { mkdir, rm, access } from 'fs/promises';
+import { join } from 'path';
+import { env } from '@/lib/env';
 
-const REPOS_DIR = join(env.DATA_DIR, "repos");
-const WORKTREES_DIR = join(env.DATA_DIR, "worktrees");
+const REPOS_DIR = join(env.DATA_DIR, 'repos');
+const WORKTREES_DIR = join(env.DATA_DIR, 'worktrees');
 
 export interface CloneResult {
   repoPath: string;
@@ -15,7 +15,7 @@ export interface WorktreeResult {
 }
 
 function getRepoPath(repoFullName: string): string {
-  return join(REPOS_DIR, repoFullName.replace("/", "_"));
+  return join(REPOS_DIR, repoFullName.replace('/', '_'));
 }
 
 function getWorktreePath(sessionId: string): string {
@@ -53,13 +53,13 @@ export async function cloneOrFetchRepo(
   if (await pathExists(repoPath)) {
     // Repo exists, fetch latest
     const git = simpleGit(repoPath);
-    await git.fetch(["--all", "--prune"]);
+    await git.fetch(['--all', '--prune']);
     return { repoPath };
   }
 
   // Clone fresh
   const git = simpleGit();
-  await git.clone(repoUrl, repoPath, ["--bare"]);
+  await git.clone(repoUrl, repoPath, ['--bare']);
 
   return { repoPath };
 }
@@ -77,7 +77,7 @@ export async function createWorktree(
   const git = simpleGit(repoPath);
 
   // Create worktree for the branch
-  await git.raw(["worktree", "add", worktreePath, branch]);
+  await git.raw(['worktree', 'add', worktreePath, branch]);
 
   return { worktreePath };
 }
@@ -92,14 +92,14 @@ export async function removeWorktree(sessionId: string): Promise<void> {
   // Find the parent repo by checking worktree list
   // Since we use bare repos, we need to find which repo owns this worktree
   const reposDir = REPOS_DIR;
-  const { readdir } = await import("fs/promises");
+  const { readdir } = await import('fs/promises');
   const repos = await readdir(reposDir);
 
   for (const repo of repos) {
     const repoPath = join(reposDir, repo);
     try {
       const git = simpleGit(repoPath);
-      await git.raw(["worktree", "remove", worktreePath, "--force"]);
+      await git.raw(['worktree', 'remove', worktreePath, '--force']);
       return;
     } catch {
       // Not the right repo, continue
@@ -115,25 +115,25 @@ export async function getDefaultBranch(repoPath: string): Promise<string> {
 
   try {
     // Try to get the HEAD reference
-    const result = await git.raw(["symbolic-ref", "--short", "HEAD"]);
+    const result = await git.raw(['symbolic-ref', '--short', 'HEAD']);
     return result.trim();
   } catch {
     // Fallback to main or master
     const branches = await git.branch();
-    if (branches.all.includes("main")) return "main";
-    if (branches.all.includes("master")) return "master";
-    return branches.all[0] || "main";
+    if (branches.all.includes('main')) return 'main';
+    if (branches.all.includes('master')) return 'master';
+    return branches.all[0] || 'main';
   }
 }
 
 export async function listBranches(repoPath: string): Promise<string[]> {
   const git = simpleGit(repoPath);
-  const branches = await git.branch(["-a"]);
+  const branches = await git.branch(['-a']);
 
   // Filter and clean branch names
   return branches.all
-    .map((b) => b.replace(/^remotes\/origin\//, ""))
-    .filter((b) => !b.includes("HEAD"))
+    .map((b) => b.replace(/^remotes\/origin\//, ''))
+    .filter((b) => !b.includes('HEAD'))
     .filter((v, i, a) => a.indexOf(v) === i); // Unique
 }
 
