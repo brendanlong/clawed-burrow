@@ -63,6 +63,18 @@
       "@typescript-eslint/parser": "$typescript-eslint",
       "@typescript-eslint/utils": "$typescript-eslint",
       "@typescript-eslint/type-utils": "$typescript-eslint"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "argon2",
+      "bcrypt",
+      "cpu-features",
+      "prisma",
+      "protobufjs",
+      "sharp",
+      "ssh2",
+      "unrs-resolver"
+    ]
   }
 }
