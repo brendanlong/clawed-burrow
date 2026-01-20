@@ -20,6 +20,18 @@ interface GitHubBranch {
   protected: boolean;
 }
 
+interface GitHubIssue {
+  id: number;
+  number: number;
+  title: string;
+  body: string | null;
+  state: 'open' | 'closed';
+  user: { login: string } | null;
+  labels: Array<{ name: string; color: string }>;
+  created_at: string;
+  updated_at: string;
+}
+
 async function githubFetch<T>(path: string, token?: string): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
@@ -201,6 +213,131 @@ export const githubRouter = router({
           protected: b.protected,
         })),
         defaultBranch: repo.default_branch,
+      };
+    }),
+
+  listIssues: protectedProcedure
+    .input(
+      z.object({
+        repoFullName: z.string().regex(/^[\w-]+\/[\w.-]+$/),
+        search: z.string().optional(),
+        state: z.enum(['open', 'closed', 'all']).default('open'),
+        cursor: z.string().optional(), // page number as string
+        perPage: z.number().int().min(1).max(100).default(30),
+      })
+    )
+    .query(async ({ input }) => {
+      const token = process.env.GITHUB_TOKEN;
+
+      if (!token) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'GitHub token is not configured',
+        });
+      }
+
+      const page = input.cursor ? parseInt(input.cursor, 10) : 1;
+
+      const headers: Record<string, string> = {
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        Authorization: `Bearer ${token}`,
+      };
+
+      let issues: GitHubIssue[];
+      let linkHeader: string | null = null;
+
+      if (input.search) {
+        // Search issues in the specific repository
+        const query = encodeURIComponent(
+          `${input.search} repo:${input.repoFullName} is:issue state:${input.state}`
+        );
+        const url = `/search/issues?q=${query}&per_page=${input.perPage}&page=${page}`;
+
+        const response = await fetch(`${GITHUB_API}${url}`, { headers });
+        linkHeader = response.headers.get('link');
+
+        if (!response.ok) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `GitHub API error: ${response.status}`,
+          });
+        }
+
+        const data = await response.json();
+        issues = data.items;
+      } else {
+        // List issues for the repository
+        const url = `/repos/${input.repoFullName}/issues?state=${input.state}&per_page=${input.perPage}&page=${page}&sort=updated&direction=desc`;
+
+        const response = await fetch(`${GITHUB_API}${url}`, { headers });
+        linkHeader = response.headers.get('link');
+
+        if (!response.ok) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `GitHub API error: ${response.status}`,
+          });
+        }
+
+        issues = await response.json();
+      }
+
+      // Filter out pull requests (GitHub returns them in issues endpoint)
+      issues = issues.filter((issue) => !('pull_request' in issue));
+
+      const links = parseLinkHeader(linkHeader);
+
+      return {
+        issues: issues.map((i) => ({
+          id: i.id,
+          number: i.number,
+          title: i.title,
+          body: i.body,
+          state: i.state,
+          author: i.user?.login || 'unknown',
+          labels: i.labels.map((l) => ({ name: l.name, color: l.color })),
+          createdAt: i.created_at,
+          updatedAt: i.updated_at,
+        })),
+        nextCursor: links.next,
+      };
+    }),
+
+  getIssue: protectedProcedure
+    .input(
+      z.object({
+        repoFullName: z.string().regex(/^[\w-]+\/[\w.-]+$/),
+        issueNumber: z.number().int().positive(),
+      })
+    )
+    .query(async ({ input }) => {
+      const token = process.env.GITHUB_TOKEN;
+
+      if (!token) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'GitHub token is not configured',
+        });
+      }
+
+      const issue = await githubFetch<GitHubIssue>(
+        `/repos/${input.repoFullName}/issues/${input.issueNumber}`,
+        token
+      );
+
+      return {
+        issue: {
+          id: issue.id,
+          number: issue.number,
+          title: issue.title,
+          body: issue.body,
+          state: issue.state,
+          author: issue.user?.login || 'unknown',
+          labels: issue.labels.map((l) => ({ name: l.name, color: l.color })),
+          createdAt: issue.created_at,
+          updatedAt: issue.updated_at,
+        },
       };
     }),
 });

@@ -28,6 +28,7 @@ model Session {
   containerId   String?
   status        String         @default("creating") // creating, running, stopped, error
   statusMessage String?        // Human-readable progress message during creation
+  initialPrompt String?        // Optional prompt to send when session starts (e.g., from GitHub issue)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   messages      Message[]

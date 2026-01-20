@@ -49,6 +49,7 @@ interface Session {
   containerId: string | null; // Docker container ID when running
   status: 'creating' | 'running' | 'stopped' | 'error';
   statusMessage: string | null; // Progress message during creation or error details
+  initialPrompt: string | null; // Optional prompt to auto-send when session starts (e.g., from GitHub issue)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -77,6 +78,22 @@ interface AuthSession {
   createdAt: Date;
   ipAddress: string | null; // For audit logging
   userAgent: string | null; // For audit logging
+}
+```
+
+### Issue
+
+```typescript
+interface Issue {
+  id: number;
+  number: number;
+  title: string;
+  body: string | null;
+  state: 'open' | 'closed';
+  author: string;
+  labels: Array<{ name: string; color: string }>;
+  createdAt: string;
+  updatedAt: string;
 }
 ```
 
@@ -114,6 +131,20 @@ github.listRepos({ search?: string, cursor?: string })
 
 github.listBranches({ repoFullName: string })
   → { branches: Branch[], defaultBranch: string }
+
+github.listIssues({
+  repoFullName: string,
+  search?: string,
+  state?: 'open' | 'closed' | 'all',  // default: 'open'
+  cursor?: string,
+  perPage?: number
+})
+  → { issues: Issue[], nextCursor?: string }
+  // Lists issues for a repository with optional search and pagination
+
+github.getIssue({ repoFullName: string, issueNumber: number })
+  → { issue: Issue }
+  // Get full details of a specific issue
 ```
 
 ### Session Management
@@ -122,12 +153,14 @@ github.listBranches({ repoFullName: string })
 sessions.create({
   name: string,
   repoFullName: string,    // e.g., "brendanlong/math-llm"
-  branch: string
+  branch: string,
+  initialPrompt?: string   // Optional prompt to auto-send when session starts
 })
   → { session: Session }
   // Returns immediately with session in "creating" status
   // Cloning and container setup continues in background
   // UI polls session.get() to track progress via statusMessage
+  // If initialPrompt is provided, it will be sent automatically when session becomes running
 
 sessions.list({ status?: SessionStatus })
   → { sessions: Session[] }
@@ -426,7 +459,11 @@ ORDER BY sequence ASC;
 
 - Search/select GitHub repo
 - Select branch (defaults to default branch)
-- Name the session
+- Optional: Select a GitHub issue to work on
+  - Searchable dropdown with open issues
+  - When selected, auto-fills session name with issue title
+  - Generates initial prompt asking Claude to fix the issue
+- Name the session (auto-filled from issue if selected)
 - Create button
 
 ### Session View (Chat)

@@ -28,6 +28,7 @@ export interface Session {
   containerId: string | null;
   status: SessionStatus;
   statusMessage: string | null;
+  initialPrompt: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,4 +41,17 @@ export interface Message {
   type: MessageType;
   content: string;
   createdAt: Date;
+}
+
+// GitHub Issue interface
+export interface Issue {
+  id: number;
+  number: number;
+  title: string;
+  body: string | null;
+  state: 'open' | 'closed';
+  author: string;
+  labels: Array<{ name: string; color: string }>;
+  createdAt: string;
+  updatedAt: string;
 }

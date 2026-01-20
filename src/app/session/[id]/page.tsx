@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useEffect, use } from 'react';
+import { useCallback, useMemo, useEffect, useRef, use } from 'react';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Header } from '@/components/Header';
@@ -35,6 +35,7 @@ function SessionHeader({
     branch: string;
     status: string;
     statusMessage?: string | null;
+    initialPrompt?: string | null;
   };
   onStart: () => void;
   onStop: () => void;
@@ -220,6 +221,37 @@ function SessionView({ sessionId }: { sessionId: string }) {
 
   const session = sessionData?.session;
   const isClaudeRunning = runningData?.running ?? false;
+
+  // Track whether we've already sent the initial prompt
+  const initialPromptSentRef = useRef(false);
+  const prevStatusRef = useRef<string | undefined>(undefined);
+
+  // Send the initial prompt when session transitions to running for the first time
+  useEffect(() => {
+    if (!session) return;
+
+    const wasCreating = prevStatusRef.current === 'creating';
+    const isNowRunning = session.status === 'running';
+    const hasInitialPrompt = !!session.initialPrompt;
+    const noMessagesSent = allMessages.length === 0;
+
+    // Update previous status
+    prevStatusRef.current = session.status;
+
+    // Only send initial prompt on transition from creating to running,
+    // when there's a prompt, no messages have been sent yet, and we haven't already sent it
+    if (
+      wasCreating &&
+      isNowRunning &&
+      hasInitialPrompt &&
+      noMessagesSent &&
+      !initialPromptSentRef.current &&
+      session.initialPrompt // TypeScript narrowing
+    ) {
+      initialPromptSentRef.current = true;
+      sendMutation.mutate({ sessionId, prompt: session.initialPrompt });
+    }
+  }, [session, allMessages.length, sessionId, sendMutation]);
 
   // Dynamic page title based on Claude running state
   useEffect(() => {

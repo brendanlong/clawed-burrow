@@ -19,7 +19,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import type { Issue } from '@/lib/types';
 
 interface Repo {
   id: number;
@@ -175,10 +177,145 @@ function BranchSelector({
   );
 }
 
+function IssueSelector({
+  repoFullName,
+  selectedIssue,
+  onSelect,
+}: {
+  repoFullName: string;
+  selectedIssue: Issue | null;
+  onSelect: (issue: Issue | null) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    trpc.github.listIssues.useInfiniteQuery(
+      { repoFullName, search: debouncedSearch || undefined, perPage: 15 },
+      {
+        getNextPageParam: (lastPage) => lastPage.nextCursor,
+        enabled: !!repoFullName,
+      }
+    );
+
+  const issues = data?.pages.flatMap((p) => p.issues) || [];
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>Link to GitHub issue (optional)</Label>
+        <Input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search issues..."
+        />
+      </div>
+
+      <div className="border rounded-lg max-h-48 overflow-y-auto">
+        {isLoading ? (
+          <div className="flex justify-center py-6">
+            <Spinner />
+          </div>
+        ) : issues.length === 0 ? (
+          <div className="text-center py-6 text-muted-foreground text-sm">
+            {search ? 'No issues found' : 'No open issues'}
+          </div>
+        ) : (
+          <ul className="divide-y divide-border">
+            {selectedIssue && (
+              <li
+                onClick={() => onSelect(null)}
+                className="px-4 py-2 cursor-pointer hover:bg-muted/50 transition-colors bg-muted/30"
+              >
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>Clear selection</span>
+                </div>
+              </li>
+            )}
+            {issues.map((issue) => (
+              <li
+                key={issue.id}
+                onClick={() => onSelect(issue)}
+                className={cn(
+                  'px-4 py-2 cursor-pointer hover:bg-muted/50 transition-colors',
+                  selectedIssue?.id === issue.id && 'bg-primary/10'
+                )}
+              >
+                <div className="flex items-start gap-2">
+                  <span className="text-xs text-muted-foreground shrink-0">#{issue.number}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{issue.title}</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {issue.labels.slice(0, 3).map((label) => (
+                        <Badge
+                          key={label.name}
+                          variant="outline"
+                          className="text-xs py-0"
+                          style={{
+                            borderColor: `#${label.color}`,
+                            color: `#${label.color}`,
+                          }}
+                        >
+                          {label.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </li>
+            ))}
+            {hasNextPage && (
+              <li className="px-4 py-2 text-center">
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? 'Loading...' : 'Load more'}
+                </Button>
+              </li>
+            )}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function generateIssuePrompt(issue: Issue, repoFullName: string): string {
+  const issueUrl = `https://github.com/${repoFullName}/issues/${issue.number}`;
+  const labels = issue.labels.map((l) => l.name).join(', ');
+
+  let prompt = `Please fix the following GitHub issue and commit and push your changes:\n\n`;
+  prompt += `## Issue #${issue.number}: ${issue.title}\n`;
+  prompt += `URL: ${issueUrl}\n`;
+  if (labels) {
+    prompt += `Labels: ${labels}\n`;
+  }
+  prompt += `\n### Description\n\n`;
+  prompt += issue.body || '(No description provided)';
+  prompt += `\n\n---\n\n`;
+  prompt += `Please:\n`;
+  prompt += `1. Analyze the issue and understand what needs to be fixed\n`;
+  prompt += `2. Make the necessary code changes\n`;
+  prompt += `3. Commit your changes with a descriptive message\n`;
+  prompt += `4. Push the changes to the remote repository`;
+
+  return prompt;
+}
+
 function NewSessionForm() {
   const router = useRouter();
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
   const [selectedBranch, setSelectedBranch] = useState('');
+  const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [sessionName, setSessionName] = useState('');
   const [error, setError] = useState('');
 
@@ -190,6 +327,23 @@ function NewSessionForm() {
       setError(err.message);
     },
   });
+
+  // When an issue is selected, use its title as the session name
+  const handleIssueSelect = useCallback((issue: Issue | null) => {
+    setSelectedIssue(issue);
+    if (issue) {
+      setSessionName(`#${issue.number}: ${issue.title}`);
+    } else {
+      setSessionName('');
+    }
+  }, []);
+
+  // Handle repo selection: also reset issue and name
+  const handleRepoSelect = useCallback((repo: Repo) => {
+    setSelectedRepo(repo);
+    setSelectedIssue(null);
+    setSessionName('');
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -205,10 +359,15 @@ function NewSessionForm() {
       return;
     }
 
+    const initialPrompt = selectedIssue
+      ? generateIssuePrompt(selectedIssue, selectedRepo.fullName)
+      : undefined;
+
     createMutation.mutate({
       name: sessionName || `${selectedRepo.name} - ${selectedBranch}`,
       repoFullName: selectedRepo.fullName,
       branch: selectedBranch,
+      initialPrompt,
     });
   };
 
@@ -220,7 +379,7 @@ function NewSessionForm() {
         </Alert>
       )}
 
-      <RepoSelector selectedRepo={selectedRepo} onSelect={setSelectedRepo} />
+      <RepoSelector selectedRepo={selectedRepo} onSelect={handleRepoSelect} />
 
       {selectedRepo && (
         <>
@@ -230,8 +389,14 @@ function NewSessionForm() {
             onSelect={setSelectedBranch}
           />
 
+          <IssueSelector
+            repoFullName={selectedRepo.fullName}
+            selectedIssue={selectedIssue}
+            onSelect={handleIssueSelect}
+          />
+
           <div className="space-y-2">
-            <Label htmlFor="sessionName">Session name (optional)</Label>
+            <Label htmlFor="sessionName">Session name {selectedIssue ? '' : '(optional)'}</Label>
             <Input
               id="sessionName"
               type="text"
@@ -239,6 +404,11 @@ function NewSessionForm() {
               onChange={(e) => setSessionName(e.target.value)}
               placeholder={`${selectedRepo.name} - ${selectedBranch || 'branch'}`}
             />
+            {selectedIssue && (
+              <p className="text-xs text-muted-foreground">
+                When the session starts, Claude will automatically be prompted to fix this issue.
+              </p>
+            )}
           </div>
         </>
       )}

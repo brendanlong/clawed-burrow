@@ -71,6 +71,7 @@ export const sessionsRouter = router({
         name: z.string().min(1).max(100),
         repoFullName: z.string().regex(/^[\w-]+\/[\w.-]+$/),
         branch: z.string().min(1),
+        initialPrompt: z.string().max(100000).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -85,6 +86,7 @@ export const sessionsRouter = router({
           workspacePath: '', // Will be updated after clone
           status: 'creating',
           statusMessage: 'Cloning repository...',
+          initialPrompt: input.initialPrompt || null,
         },
       });
 
