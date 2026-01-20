@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useEffect, useRef, use } from 'react';
+import { useCallback, useMemo, useEffect, useRef, useState, use } from 'react';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Header } from '@/components/Header';
@@ -99,18 +99,37 @@ function SessionHeader({
 }
 
 function SessionView({ sessionId }: { sessionId: string }) {
-  // Fetch session details (poll while creating)
+  // Track Claude running state (updated via SSE)
+  const [isClaudeRunning, setIsClaudeRunning] = useState(false);
+
+  // Fetch session details
   const {
     data: sessionData,
     isLoading: sessionLoading,
     refetch: refetchSession,
-  } = trpc.sessions.get.useQuery(
+  } = trpc.sessions.get.useQuery({ sessionId });
+
+  // Subscribe to session status changes via SSE
+  trpc.sessions.onStatusChange.useSubscription(
     { sessionId },
     {
-      // Poll every second while session is being created
-      refetchInterval: (query) => {
-        const status = query.state.data?.session?.status;
-        return status === 'creating' ? 1000 : false;
+      onData: (data) => {
+        // When we get an SSE event, refetch session to get full updated data
+        if ('status' in data) {
+          refetchSession();
+        }
+      },
+    }
+  );
+
+  // Subscribe to Claude running state changes via SSE
+  trpc.claude.onRunningChange.useSubscription(
+    { sessionId },
+    {
+      onData: (data) => {
+        if (data && typeof data === 'object' && 'running' in data) {
+          setIsClaudeRunning(Boolean(data.running));
+        }
       },
     }
   );
@@ -129,29 +148,34 @@ function SessionView({ sessionId }: { sessionId: string }) {
     }
   );
 
-  // Check if Claude is running
-  const { data: runningData } = trpc.claude.isRunning.useQuery(
-    { sessionId },
-    { refetchInterval: 2000 }
-  );
-
-  // Compute cursor for polling new messages from history data
+  // Compute cursor for fetching new messages from history data
   const historyCursor = useMemo(() => {
     const firstPage = historyData?.pages?.[0];
     if (!firstPage || firstPage.messages.length === 0) return undefined;
     return Math.max(...firstPage.messages.map((m) => m.sequence));
   }, [historyData?.pages]);
 
-  // Poll for new messages (forward from history cursor)
-  const { data: newMessagesData } = trpc.claude.getHistory.useQuery(
+  // Query for new messages (forward from history cursor)
+  const { data: newMessagesData, refetch: refetchNewMessages } = trpc.claude.getHistory.useQuery(
     historyCursor !== undefined
       ? { sessionId, cursor: historyCursor, direction: 'forward', limit: 100 }
       : { sessionId, direction: 'backward', limit: 100 },
     {
-      // Poll faster when Claude is running
-      refetchInterval: runningData?.running ? 500 : 5000,
-      // Don't start polling until history has loaded
+      // No polling - we use SSE to trigger refetches
       enabled: !historyLoading,
+    }
+  );
+
+  // Subscribe to new messages via SSE
+  trpc.claude.onMessage.useSubscription(
+    { sessionId },
+    {
+      onData: (data) => {
+        // When we get a new message notification, refetch messages
+        if ('messageId' in data) {
+          refetchNewMessages();
+        }
+      },
     }
   );
 
@@ -220,7 +244,6 @@ function SessionView({ sessionId }: { sessionId: string }) {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const session = sessionData?.session;
-  const isClaudeRunning = runningData?.running ?? false;
 
   // Track whether we've already sent the initial prompt
   const initialPromptSentRef = useRef(false);

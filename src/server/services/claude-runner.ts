@@ -12,6 +12,7 @@ import { prisma } from '@/lib/prisma';
 import { getMessageType } from '@/lib/claude-messages';
 import { DockerStreamDemuxer } from './docker-stream-demuxer';
 import { v4 as uuid, v5 as uuidv5 } from 'uuid';
+import { serverEvents } from './events';
 
 // Namespace UUID for generating deterministic IDs from error line content
 const ERROR_LINE_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
@@ -50,6 +51,21 @@ function log(context: string, message: string, data?: Record<string, unknown>): 
 
 function getOutputFileName(sessionId: string): string {
   return `${OUTPUT_FILE_PREFIX}${sessionId}.jsonl`;
+}
+
+// Helper to emit message event after saving to DB
+function emitNewMessage(
+  sessionId: string,
+  messageId: string,
+  sequence: number,
+  type: string
+): void {
+  serverEvents.emit('newMessage', { sessionId, messageId, sequence, type });
+}
+
+// Helper to emit Claude running state change
+function emitClaudeRunning(sessionId: string, running: boolean): void {
+  serverEvents.emit('claudeRunning', { sessionId, running });
 }
 
 function getOutputFilePath(sessionId: string): string {
@@ -96,15 +112,18 @@ export async function runClaudeCommand(
   let sequence = (lastMessage?.sequence ?? -1) + 1;
 
   // Store the user prompt first
+  const userMsgId = uuid();
+  const userMsgSeq = sequence++;
   await prisma.message.create({
     data: {
-      id: uuid(),
+      id: userMsgId,
       sessionId,
-      sequence: sequence++,
+      sequence: userMsgSeq,
       type: 'user',
       content: JSON.stringify({ type: 'user', content: prompt }),
     },
   });
+  emitNewMessage(sessionId, userMsgId, userMsgSeq, 'user');
 
   // Build the Claude command
   // Use --resume for subsequent messages, --session-id for the first
@@ -142,6 +161,7 @@ export async function runClaudeCommand(
 
   runningProcesses.set(sessionId, { containerId, pid: null });
   log('runClaudeCommand', 'Process registered', { sessionId });
+  emitClaudeRunning(sessionId, true);
 
   try {
     // Wait for file to exist
@@ -192,21 +212,23 @@ export async function runClaudeCommand(
             (parsed as { uuid?: string; id?: string }).id ||
             uuid();
 
-          log('runClaudeCommand', 'Saving message', { sessionId, sequence, messageType });
+          const msgSeq = sequence++;
+          log('runClaudeCommand', 'Saving message', { sessionId, sequence: msgSeq, messageType });
 
           await prisma.message.create({
             data: {
               id: msgId,
               sessionId,
-              sequence: sequence++,
+              sequence: msgSeq,
               type: messageType,
               content: line,
             },
           });
+          emitNewMessage(sessionId, msgId, msgSeq, messageType);
 
           // Update last processed sequence for recovery
           await prisma.claudeProcess
-            .update({ where: { sessionId }, data: { lastSequence: sequence - 1 } })
+            .update({ where: { sessionId }, data: { lastSequence: msgSeq } })
             .catch(() => {});
         }
       });
@@ -241,15 +263,17 @@ export async function runClaudeCommand(
                 (parsed as { uuid?: string; id?: string }).id ||
                 uuid();
 
+              const msgSeq = sequence++;
               await prisma.message.create({
                 data: {
                   id: msgId,
                   sessionId,
-                  sequence: sequence++,
+                  sequence: msgSeq,
                   type: messageType,
                   content: line,
                 },
               });
+              emitNewMessage(sessionId, msgId, msgSeq, messageType);
               totalLines++;
             }
 
@@ -273,6 +297,7 @@ export async function runClaudeCommand(
     });
   } finally {
     runningProcesses.delete(sessionId);
+    emitClaudeRunning(sessionId, false);
     await killProcessesByPattern(containerId, outputFile).catch(() => {});
     await prisma.claudeProcess.delete({ where: { sessionId } }).catch(() => {});
     log('runClaudeCommand', 'Cleanup complete', { sessionId });
@@ -330,6 +355,7 @@ export async function reconnectToClaudeProcess(
   }
 
   runningProcesses.set(sessionId, { containerId, pid: null });
+  emitClaudeRunning(sessionId, true);
 
   // Start processing the output file in the background using the stored execId
   processOutputFileWithExecId(
@@ -341,6 +367,7 @@ export async function reconnectToClaudeProcess(
   )
     .finally(() => {
       runningProcesses.delete(sessionId);
+      emitClaudeRunning(sessionId, false);
       killProcessesByPattern(containerId, getOutputFilePath(sessionId)).catch(() => {});
       prisma.claudeProcess.delete({ where: { sessionId } }).catch(() => {});
     })
@@ -403,11 +430,12 @@ async function catchUpFromOutputFile(
       }
 
       // Save as error
+      const errorSeq = sequence++;
       await prisma.message.create({
         data: {
           id: errorId,
           sessionId,
-          sequence: sequence++,
+          sequence: errorSeq,
           type: 'system',
           content: JSON.stringify({
             type: 'system',
@@ -416,6 +444,7 @@ async function catchUpFromOutputFile(
           }),
         },
       });
+      emitNewMessage(sessionId, errorId, errorSeq, 'system');
       linesProcessed++;
       continue;
     }
@@ -456,15 +485,17 @@ async function catchUpFromOutputFile(
       }
     }
 
+    const msgSeq = sequence++;
     await prisma.message.create({
       data: {
         id: msgId,
         sessionId,
-        sequence: sequence++,
+        sequence: msgSeq,
         type: messageType,
         content: line,
       },
     });
+    emitNewMessage(sessionId, msgId, msgSeq, messageType);
     linesProcessed++;
   }
 
@@ -534,10 +565,12 @@ async function processOutputFileWithExecId(
             (parsed as { uuid?: string; id?: string }).id ||
             uuid();
 
+          const msgSeq = sequence++;
           await prisma.message.create({
-            data: { id: msgId, sessionId, sequence: sequence++, type: messageType, content: line },
+            data: { id: msgId, sessionId, sequence: msgSeq, type: messageType, content: line },
           });
-          await updateLastSequence(sessionId, sequence - 1);
+          emitNewMessage(sessionId, msgId, msgSeq, messageType);
+          await updateLastSequence(sessionId, msgSeq);
         }
       });
 
@@ -570,15 +603,17 @@ async function processOutputFileWithExecId(
                 (parsed as { uuid?: string; id?: string }).id ||
                 uuid();
 
+              const msgSeq = sequence++;
               await prisma.message.create({
                 data: {
                   id: msgId,
                   sessionId,
-                  sequence: sequence++,
+                  sequence: msgSeq,
                   type: messageType,
                   content: line,
                 },
               });
+              emitNewMessage(sessionId, msgId, msgSeq, messageType);
               totalLines++;
             }
 

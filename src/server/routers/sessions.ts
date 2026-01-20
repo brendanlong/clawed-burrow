@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc';
 import { prisma } from '@/lib/prisma';
 import { TRPCError } from '@trpc/server';
+import { tracked } from '@trpc/server';
 import type { SessionStatus } from '@/lib/types';
 import { cloneRepo, removeWorkspace } from '../services/git';
 import {
@@ -10,6 +11,7 @@ import {
   removeContainer,
   getContainerStatus,
 } from '../services/docker';
+import { serverEvents } from '../services/events';
 
 const sessionStatusSchema = z.enum(['creating', 'running', 'stopped', 'error']);
 
@@ -20,11 +22,23 @@ async function setupSession(
   branch: string,
   githubToken?: string
 ): Promise<void> {
-  const updateStatus = async (message: string) => {
+  const updateStatus = async (message: string, status?: string) => {
     await prisma.session.update({
       where: { id: sessionId },
-      data: { statusMessage: message },
+      data: { statusMessage: message, ...(status ? { status } : {}) },
     });
+    // Emit session update event
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { status: true, statusMessage: true },
+    });
+    if (session) {
+      serverEvents.emit('sessionUpdate', {
+        sessionId,
+        status: session.status,
+        statusMessage: session.statusMessage,
+      });
+    }
   };
 
   try {
@@ -51,6 +65,12 @@ async function setupSession(
         statusMessage: null,
       },
     });
+    // Emit session is now running
+    serverEvents.emit('sessionUpdate', {
+      sessionId,
+      status: 'running',
+      statusMessage: null,
+    });
   } catch (error) {
     // Mark session as error with message
     const errorMessage = error instanceof Error ? error.message : 'Failed to create session';
@@ -60,6 +80,12 @@ async function setupSession(
         status: 'error',
         statusMessage: errorMessage,
       },
+    });
+    // Emit error status
+    serverEvents.emit('sessionUpdate', {
+      sessionId,
+      status: 'error',
+      statusMessage: errorMessage,
     });
   }
 }
@@ -191,6 +217,13 @@ export const sessionsRouter = router({
           },
         });
 
+        // Emit status change
+        serverEvents.emit('sessionUpdate', {
+          sessionId: session.id,
+          status: 'running',
+          statusMessage: null,
+        });
+
         return { session: updatedSession };
       } catch (error) {
         throw new TRPCError({
@@ -221,6 +254,13 @@ export const sessionsRouter = router({
       const updatedSession = await prisma.session.update({
         where: { id: session.id },
         data: { status: 'stopped' },
+      });
+
+      // Emit status change
+      serverEvents.emit('sessionUpdate', {
+        sessionId: session.id,
+        status: 'stopped',
+        statusMessage: null,
       });
 
       return { session: updatedSession };
@@ -287,5 +327,34 @@ export const sessionsRouter = router({
       }
 
       return { session };
+    }),
+
+  // SSE subscription for session status updates
+  onStatusChange: protectedProcedure
+    .input(z.object({ sessionId: z.string().uuid() }))
+    .subscription(async function* ({ input, signal }) {
+      // Yield initial status
+      const session = await prisma.session.findUnique({
+        where: { id: input.sessionId },
+        select: { status: true, statusMessage: true },
+      });
+      if (session) {
+        yield tracked('initial', {
+          status: session.status,
+          statusMessage: session.statusMessage,
+        });
+      }
+
+      // Subscribe to status changes for this session
+      for await (const event of serverEvents.subscribe(
+        'sessionUpdate',
+        (e) => e.sessionId === input.sessionId
+      )) {
+        if (signal?.aborted) break;
+        yield tracked(`status-${Date.now()}`, {
+          status: event.status,
+          statusMessage: event.statusMessage,
+        });
+      }
     }),
 });

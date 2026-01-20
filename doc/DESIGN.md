@@ -159,7 +159,7 @@ sessions.create({
   → { session: Session }
   // Returns immediately with session in "creating" status
   // Cloning and container setup continues in background
-  // UI polls session.get() to track progress via statusMessage
+  // UI subscribes to onStatusChange SSE to track progress
   // If initialPrompt is provided, it will be sent automatically when session becomes running
 
 sessions.list({ status?: SessionStatus })
@@ -179,15 +179,20 @@ sessions.stop({ sessionId: string })
 sessions.delete({ sessionId: string })
   → { success: true }
   // Stops container, deletes workspace
+
+sessions.onStatusChange({ sessionId: string })
+  → SSE subscription
+  // Yields { status, statusMessage } when session status changes
+  // Used to replace polling for session creation progress
 ```
 
 ### Claude Interaction
 
 ```typescript
 claude.send({ sessionId: string, prompt: string })
-  → ReadableStream<Message>
-  // Spawns: claude -p <prompt> --resume <sessionId> --output-format stream-json
-  // Streams parsed JSON lines as they arrive
+  → { success: true }
+  // Starts Claude process in background
+  // Messages are streamed to database and notified via onMessage SSE
 
 claude.interrupt({ sessionId: string })
   → { success: true }
@@ -196,10 +201,24 @@ claude.interrupt({ sessionId: string })
 claude.getHistory({
   sessionId: string,
   cursor?: number,        // sequence number
-  direction: 'before' | 'after',
+  direction: 'forward' | 'backward',
   limit?: number          // default 50
 })
   → { messages: Message[], nextCursor?: number, hasMore: boolean }
+
+claude.isRunning({ sessionId: string })
+  → { running: boolean }
+  // Query to check if Claude is currently running
+
+claude.onMessage({ sessionId: string })
+  → SSE subscription
+  // Yields { messageId, sequence, type } when a new message is saved
+  // UI uses this to trigger refetches instead of polling
+
+claude.onRunningChange({ sessionId: string })
+  → SSE subscription
+  // Yields { running: boolean } when Claude starts or stops
+  // UI uses this to update running indicator immediately
 ```
 
 ## Session Lifecycle

@@ -2,7 +2,9 @@ import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc';
 import { prisma } from '@/lib/prisma';
 import { TRPCError } from '@trpc/server';
+import { tracked } from '@trpc/server';
 import { runClaudeCommand, interruptClaude, isClaudeRunningAsync } from '../services/claude-runner';
+import { serverEvents } from '../services/events';
 
 export const claudeRouter = router({
   send: protectedProcedure
@@ -146,5 +148,44 @@ export const claudeRouter = router({
     .input(z.object({ sessionId: z.string().uuid() }))
     .query(async ({ input }) => {
       return { running: await isClaudeRunningAsync(input.sessionId) };
+    }),
+
+  // SSE subscription for new messages
+  onMessage: protectedProcedure
+    .input(z.object({ sessionId: z.string().uuid() }))
+    .subscription(async function* ({ input, signal }) {
+      // Yield initial state to indicate subscription is active
+      yield tracked('connected', { connected: true });
+
+      // Subscribe to message events for this session
+      for await (const event of serverEvents.subscribe(
+        'newMessage',
+        (e) => e.sessionId === input.sessionId
+      )) {
+        if (signal?.aborted) break;
+        yield tracked(event.messageId, {
+          messageId: event.messageId,
+          sequence: event.sequence,
+          type: event.type,
+        });
+      }
+    }),
+
+  // SSE subscription for Claude running state changes
+  onRunningChange: protectedProcedure
+    .input(z.object({ sessionId: z.string().uuid() }))
+    .subscription(async function* ({ input, signal }) {
+      // Yield initial state
+      const initialRunning = await isClaudeRunningAsync(input.sessionId);
+      yield tracked('initial', { running: initialRunning });
+
+      // Subscribe to running state changes for this session
+      for await (const event of serverEvents.subscribe(
+        'claudeRunning',
+        (e) => e.sessionId === input.sessionId
+      )) {
+        if (signal?.aborted) break;
+        yield tracked(`running-${Date.now()}`, { running: event.running });
+      }
     }),
 });
