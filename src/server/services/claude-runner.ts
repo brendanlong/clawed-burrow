@@ -76,6 +76,24 @@ async function processClaudeStream(
   let sequence = startSequence;
   let buffer = '';
 
+  // Helper to save an error message
+  const saveErrorMessage = async (errorText: string) => {
+    const errorContent = JSON.stringify({
+      type: 'system',
+      error: true,
+      message: errorText,
+    });
+    await prisma.message.create({
+      data: {
+        id: uuid(),
+        sessionId,
+        sequence: sequence++,
+        type: 'system',
+        content: errorContent,
+      },
+    });
+  };
+
   return new Promise((resolve, reject) => {
     stream.on('data', async (chunk: Buffer) => {
       // Docker multiplexed stream has 8-byte header
@@ -104,7 +122,9 @@ async function processClaudeStream(
             },
           });
         } catch {
+          // Save unparseable output as an error message visible to the user
           console.error('Failed to parse Claude output:', line);
+          await saveErrorMessage(line);
         }
       }
     });
@@ -113,7 +133,8 @@ async function processClaudeStream(
       resolve();
     });
 
-    stream.on('error', (err) => {
+    stream.on('error', async (err) => {
+      await saveErrorMessage(`Stream error: ${err.message}`);
       reject(err);
     });
   });

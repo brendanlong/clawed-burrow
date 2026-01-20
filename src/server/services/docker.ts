@@ -35,7 +35,7 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
       Binds: [
         `${config.worktreePath}:/workspace`,
         `/var/run/docker.sock:/var/run/docker.sock`,
-        `${env.CLAUDE_AUTH_PATH}:/root/.claude:ro`,
+        `${env.CLAUDE_AUTH_PATH}:/home/claudeuser/.claude:ro`,
       ],
       DeviceRequests: [
         {

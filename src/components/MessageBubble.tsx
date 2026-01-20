@@ -17,6 +17,8 @@ interface MessageContent {
   content?: string | unknown[];
   tool_calls?: ToolCall[];
   result?: unknown;
+  error?: boolean;
+  message?: string;
   [key: string]: unknown;
 }
 
@@ -92,20 +94,28 @@ export function MessageBubble({ message }: { message: { type: string; content: u
   const isAssistant = type === 'assistant';
   const isSystem = type === 'system';
   const isResult = type === 'result';
+  const isError = isSystem && content.error === true;
 
   return (
     <div
       className={cn('max-w-[85%] rounded-lg p-4', {
         'bg-primary text-primary-foreground ml-auto': isUser,
         'bg-card border': isAssistant,
-        'bg-muted text-muted-foreground text-sm': isSystem,
+        'bg-muted text-muted-foreground text-sm': isSystem && !isError,
+        'bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 text-sm':
+          isError,
         'bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 text-sm':
           isResult,
       })}
     >
-      {isSystem && (
+      {isSystem && !isError && (
         <Badge variant="secondary" className="mb-2">
           System
+        </Badge>
+      )}
+      {isError && (
+        <Badge variant="destructive" className="mb-2">
+          Error
         </Badge>
       )}
       {isResult && (
@@ -114,7 +124,13 @@ export function MessageBubble({ message }: { message: { type: string; content: u
         </Badge>
       )}
 
-      {renderContent(content.content)}
+      {/* Render error message if present */}
+      {isError && content.message && (
+        <p className="whitespace-pre-wrap font-mono text-xs">{content.message}</p>
+      )}
+
+      {/* Render regular content */}
+      {!isError && renderContent(content.content)}
 
       {content.tool_calls && content.tool_calls.length > 0 && (
         <div className="mt-2 space-y-2">

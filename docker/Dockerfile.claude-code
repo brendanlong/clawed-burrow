@@ -23,12 +23,17 @@ RUN mkdir -p /etc/apt/keyrings && \
 # Install Claude Code
 RUN npm install -g @anthropic-ai/claude-code
 
+# Create a non-root user with UID 1000 (common default for host user)
+# Add to docker group for docker-in-docker capability
+RUN useradd -m -s /bin/bash -u 1000 claudeuser && \
+    usermod -aG docker claudeuser
+
 # Set up working directory
 WORKDIR /workspace
+RUN chown claudeuser:claudeuser /workspace
 
-# Create a non-root user (optional, for security)
-# RUN useradd -m -s /bin/bash claudeuser
-# USER claudeuser
+# Switch to non-root user
+USER claudeuser
 
 # Entry point that keeps container alive
 CMD ["tail", "-f", "/dev/null"]
