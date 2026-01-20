@@ -13,6 +13,9 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   // Prefix for session branches in worktrees (e.g., "claude/" creates "claude/{sessionId}")
   SESSION_BRANCH_PREFIX: z.string().default('claude/'),
+  // Argon2-hashed password for authentication (generate with: node -e "require('argon2').hash('yourpassword').then(console.log)")
+  // No default - logins will fail if not set
+  PASSWORD_HASH: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

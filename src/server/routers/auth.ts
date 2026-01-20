@@ -1,24 +1,20 @@
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
 import { prisma } from '@/lib/prisma';
-import {
-  hashPassword,
-  verifyPassword,
-  generateSessionToken,
-  loginSchema,
-  SESSION_DURATION_MS,
-} from '@/lib/auth';
+import { verifyPassword, generateSessionToken, loginSchema, SESSION_DURATION_MS } from '@/lib/auth';
+import { env } from '@/lib/env';
 import { TRPCError } from '@trpc/server';
 
-async function createAuthSession(userId: string): Promise<string> {
+async function createAuthSession(ipAddress?: string, userAgent?: string): Promise<string> {
   const token = generateSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
 
   await prisma.authSession.create({
     data: {
       token,
-      userId,
       expiresAt,
+      ipAddress,
+      userAgent,
     },
   });
 
@@ -26,101 +22,87 @@ async function createAuthSession(userId: string): Promise<string> {
 }
 
 export const authRouter = router({
-  login: publicProcedure.input(loginSchema).mutation(async ({ input }) => {
-    const user = await prisma.user.findUnique({
-      where: { username: input.username },
-    });
-
-    if (!user) {
-      throw new TRPCError({
-        code: 'UNAUTHORIZED',
-        message: 'Invalid username or password',
-      });
-    }
-
-    const valid = await verifyPassword(input.password, user.passwordHash);
-
-    if (!valid) {
-      throw new TRPCError({
-        code: 'UNAUTHORIZED',
-        message: 'Invalid username or password',
-      });
-    }
-
-    const token = await createAuthSession(user.id);
-
-    return { token, user: { id: user.id, username: user.username } };
-  }),
-
-  register: publicProcedure
+  login: publicProcedure
     .input(
-      z.object({
-        username: z.string().min(3).max(32),
-        password: z.string().min(8).max(128),
+      loginSchema.extend({
+        ipAddress: z.string().optional(),
+        userAgent: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      // Check if any users exist - only allow registration if no users exist
-      const userCount = await prisma.user.count();
-      if (userCount > 0) {
+      // Check if password hash is configured
+      if (!env.PASSWORD_HASH) {
         throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Registration is disabled. Contact the administrator.',
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Authentication not configured. Set PASSWORD_HASH environment variable.',
         });
       }
 
-      const existing = await prisma.user.findUnique({
-        where: { username: input.username },
-      });
+      const valid = await verifyPassword(input.password, env.PASSWORD_HASH);
 
-      if (existing) {
+      if (!valid) {
         throw new TRPCError({
-          code: 'CONFLICT',
-          message: 'Username already taken',
+          code: 'UNAUTHORIZED',
+          message: 'Invalid password',
         });
       }
 
-      const passwordHash = await hashPassword(input.password);
+      const token = await createAuthSession(input.ipAddress, input.userAgent);
 
-      const user = await prisma.user.create({
-        data: {
-          username: input.username,
-          passwordHash,
-        },
-      });
-
-      const token = await createAuthSession(user.id);
-
-      return { token, user: { id: user.id, username: user.username } };
+      return { token };
     }),
 
   logout: protectedProcedure.mutation(async ({ ctx }) => {
-    // Delete all sessions for this user (logs out everywhere)
-    await prisma.authSession.deleteMany({
-      where: { userId: ctx.user.userId },
+    // Delete the current session
+    await prisma.authSession.delete({
+      where: { id: ctx.sessionId },
     });
 
     return { success: true };
   }),
 
-  me: protectedProcedure.query(async ({ ctx }) => {
-    const user = await prisma.user.findUnique({
-      where: { id: ctx.user.userId },
-      select: { id: true, username: true },
+  logoutAll: protectedProcedure.mutation(async () => {
+    // Delete all sessions (logs out everywhere)
+    await prisma.authSession.deleteMany({});
+
+    return { success: true };
+  }),
+
+  listSessions: protectedProcedure.query(async ({ ctx }) => {
+    const sessions = await prisma.authSession.findMany({
+      select: {
+        id: true,
+        createdAt: true,
+        expiresAt: true,
+        ipAddress: true,
+        userAgent: true,
+      },
+      orderBy: { createdAt: 'desc' },
     });
 
-    if (!user) {
-      throw new TRPCError({
-        code: 'NOT_FOUND',
-        message: 'User not found',
+    return {
+      sessions: sessions.map((s) => ({
+        ...s,
+        isCurrent: s.id === ctx.sessionId,
+      })),
+    };
+  }),
+
+  deleteSession: protectedProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      // Prevent deleting current session via this endpoint
+      if (input.sessionId === ctx.sessionId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Use logout to delete your current session',
+        });
+      }
+
+      await prisma.authSession.delete({
+        where: { id: input.sessionId },
       });
-    }
 
-    return user;
-  }),
-
-  needsSetup: publicProcedure.query(async () => {
-    const userCount = await prisma.user.count();
-    return { needsSetup: userCount === 0 };
-  }),
+      return { success: true };
+    }),
 });

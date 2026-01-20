@@ -6,7 +6,6 @@ const TOKEN_LENGTH = 32; // 256 bits of entropy
 export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export const loginSchema = z.object({
-  username: z.string().min(1, 'Username is required'),
   password: z.string().min(1, 'Password is required'),
 });
 

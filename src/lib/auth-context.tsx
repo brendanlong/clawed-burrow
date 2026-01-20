@@ -3,33 +3,25 @@
 import type { ReactNode } from 'react';
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
-interface User {
-  id: string;
-  username: string;
-}
-
 interface AuthContextType {
-  user: User | null;
+  isAuthenticated: boolean;
   token: string | null;
   isLoading: boolean;
-  login: (token: string, user: User) => void;
+  login: (token: string) => void;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'auth_token';
-const USER_KEY = 'auth_user';
 
 interface AuthState {
-  user: User | null;
   token: string | null;
   isLoading: boolean;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authState, setAuthState] = useState<AuthState>({
-    user: null,
     token: null,
     isLoading: true,
   });
@@ -39,32 +31,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Using queueMicrotask to avoid synchronous setState in effect (React 19 lint rule)
     queueMicrotask(() => {
       const storedToken = localStorage.getItem(TOKEN_KEY);
-      const storedUser = localStorage.getItem(USER_KEY);
 
       setAuthState({
         token: storedToken,
-        user: storedUser ? JSON.parse(storedUser) : null,
         isLoading: false,
       });
     });
   }, []);
 
-  const login = useCallback((newToken: string, newUser: User) => {
+  const login = useCallback((newToken: string) => {
     localStorage.setItem(TOKEN_KEY, newToken);
-    localStorage.setItem(USER_KEY, JSON.stringify(newUser));
-    setAuthState({ token: newToken, user: newUser, isLoading: false });
+    setAuthState({ token: newToken, isLoading: false });
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-    setAuthState({ token: null, user: null, isLoading: false });
+    setAuthState({ token: null, isLoading: false });
   }, []);
 
   return (
     <AuthContext.Provider
       value={{
-        user: authState.user,
+        isAuthenticated: !!authState.token,
         token: authState.token,
         isLoading: authState.isLoading,
         login,

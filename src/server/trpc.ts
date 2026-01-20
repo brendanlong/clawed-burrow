@@ -3,13 +3,8 @@ import superjson from 'superjson';
 import { parseAuthHeader } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-export interface AuthUser {
-  userId: string;
-  username: string;
-}
-
 export interface Context {
-  user: AuthUser | null;
+  sessionId: string | null;
 }
 
 export async function createContext(opts: { headers: Headers }): Promise<Context> {
@@ -17,24 +12,19 @@ export async function createContext(opts: { headers: Headers }): Promise<Context
   const token = parseAuthHeader(authHeader);
 
   if (!token) {
-    return { user: null };
+    return { sessionId: null };
   }
 
   const session = await prisma.authSession.findUnique({
     where: { token },
-    include: { user: { select: { id: true, username: true } } },
+    select: { id: true, expiresAt: true },
   });
 
   if (!session || session.expiresAt < new Date()) {
-    return { user: null };
+    return { sessionId: null };
   }
 
-  return {
-    user: {
-      userId: session.user.id,
-      username: session.user.username,
-    },
-  };
+  return { sessionId: session.id };
 }
 
 const t = initTRPC.context<Context>().create({
@@ -54,7 +44,7 @@ export const router = t.router;
 export const publicProcedure = t.procedure;
 
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
-  if (!ctx.user) {
+  if (!ctx.sessionId) {
     throw new TRPCError({
       code: 'UNAUTHORIZED',
       message: 'You must be logged in to access this resource',
@@ -62,7 +52,7 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   }
   return next({
     ctx: {
-      user: ctx.user,
+      sessionId: ctx.sessionId,
     },
   });
 });

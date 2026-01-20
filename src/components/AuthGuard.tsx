@@ -6,14 +6,14 @@ import { useAuth } from '@/lib/auth-context';
 import { Spinner } from '@/components/ui/spinner';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && !user) {
+    if (!isLoading && !isAuthenticated) {
       router.push('/login');
     }
-  }, [user, isLoading, router]);
+  }, [isAuthenticated, isLoading, router]);
 
   if (isLoading) {
     return (
@@ -23,7 +23,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) {
+  if (!isAuthenticated) {
     return null;
   }
 

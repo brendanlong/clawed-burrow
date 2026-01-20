@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 
 export function Header() {
-  const { user, logout } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
 
   return (
     <header className="bg-background border-b">
@@ -15,13 +15,10 @@ export function Header() {
             <span className="text-xl font-bold">Claude Code Local Web</span>
           </Link>
 
-          {user && (
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-muted-foreground">{user.username}</span>
-              <Button variant="ghost" size="sm" onClick={logout}>
-                Sign out
-              </Button>
-            </div>
+          {isAuthenticated && (
+            <Button variant="ghost" size="sm" onClick={logout}>
+              Sign out
+            </Button>
           )}
         </div>
       </div>

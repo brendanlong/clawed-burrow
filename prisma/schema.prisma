@@ -7,23 +7,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id           String        @id @default(uuid())
-  username     String        @unique
-  passwordHash String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  authSessions AuthSession[]
-}
-
 model AuthSession {
   id        String   @id @default(uuid())
   token     String   @unique
-  userId    String
   expiresAt DateTime
   createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipAddress String?
+  userAgent String?
 
   @@index([token])
   @@index([expiresAt])

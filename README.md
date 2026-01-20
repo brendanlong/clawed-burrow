@@ -7,7 +7,8 @@ A self-hosted web application that provides mobile-friendly access to Claude Cod
 - Run Claude Code sessions from any device with a web browser
 - Access local GPU resources for AI workloads
 - Persistent sessions tied to git worktrees
-- Secure authentication with username/password
+- Simple password-based authentication (single user)
+- Session tracking with IP addresses and login history
 - Clean session lifecycle management
 - Mobile-friendly interface
 
@@ -36,8 +37,25 @@ cp .env.example .env
 
 Edit `.env` and set:
 
+- `PASSWORD_HASH`: Argon2-hashed password for authentication (see below)
 - `GITHUB_TOKEN`: Your GitHub Personal Access Token
 - `CLAUDE_AUTH_PATH`: Path to your Claude Code auth (usually `~/.claude`)
+
+### Generate Password Hash
+
+Generate an Argon2 hash of your password:
+
+```bash
+node -e "require('argon2').hash('your-secure-password').then(console.log)"
+```
+
+Add the output to your `.env` file:
+
+```bash
+PASSWORD_HASH='$argon2id$v=19$m=65536,t=3,p=4$...'
+```
+
+**Note:** Logins will fail if `PASSWORD_HASH` is not set.
 
 ### 3. Initialize Database
 
@@ -92,6 +110,7 @@ docker compose up -d
 
 | Variable           | Description                        | Default                  |
 | ------------------ | ---------------------------------- | ------------------------ |
+| `PASSWORD_HASH`    | Argon2-hashed password for auth    | None (required)          |
 | `DATABASE_URL`     | SQLite database path               | `file:./data/dev.db`     |
 | `GITHUB_TOKEN`     | GitHub Personal Access Token       | Required for repo access |
 | `CLAUDE_AUTH_PATH` | Path to Claude Code auth directory | `/root/.claude`          |
@@ -178,8 +197,9 @@ pnpm start
 
 ## Security Considerations
 
-- The application uses database-backed sessions with random tokens for authentication
-- First user to register becomes the admin (registration is then disabled)
+- Single-user authentication via Argon2-hashed password stored in environment variable
+- Database-backed sessions with random tokens (256-bit entropy)
+- Session tracking includes IP addresses and user agents for audit purposes
 - Claude Code runs with `--dangerously-skip-permissions` inside isolated containers
 - Each session has its own container with a separate git worktree
 - Docker socket access is provided for docker-in-docker capability

@@ -66,15 +66,16 @@ interface Message {
 }
 ```
 
-### User
+### AuthSession
 
 ```typescript
-interface User {
+interface AuthSession {
   id: string;
-  username: string;
-  passwordHash: string;
-  totpSecret: string | null; // For authenticator app
-  webauthnCredentials: WebAuthnCredential[]; // For Yubikey
+  token: string; // 256-bit random token
+  expiresAt: Date;
+  createdAt: Date;
+  ipAddress: string | null; // For audit logging
+  userAgent: string | null; // For audit logging
 }
 ```
 
@@ -82,14 +83,26 @@ interface User {
 
 ### Authentication
 
-```typescript
-auth.login({ username, password, totp? })
-  → { sessionToken } | { requiresTwoFactor: true }
+Single-user authentication using password stored in `PASSWORD_HASH` environment variable (Argon2-hashed).
 
-auth.verifyTwoFactor({ totp } | { webauthnResponse })
-  → { sessionToken }
+```typescript
+auth.login({ password })
+  → { token }
 
 auth.logout()
+  → { success: true }
+
+auth.logoutAll()
+  → { success: true }
+  // Deletes all sessions
+
+auth.listSessions()
+  → { sessions: AuthSession[] }
+  // View all login sessions with IP/user agent
+
+auth.deleteSession({ sessionId })
+  → { success: true }
+  // Revoke a specific session
 ```
 
 ### GitHub Integration
@@ -332,17 +345,11 @@ ORDER BY sequence ASC;
 
 1. **Cloudflare Tunnel** — Traffic encrypted, no exposed ports
 2. **Optional: Cloudflare Access** — Additional auth layer at edge
-3. **NextAuth.js** — Application-level auth with:
-   - Username/password (argon2 hashed)
-   - Rate limiting on login attempts
-   - Secure session cookies (httpOnly, secure, sameSite)
-
-### Two-Factor Authentication (Phase 2)
-
-- TOTP via authenticator app (Google Authenticator, Authy, etc.)
-- WebAuthn for Yubikey support
-- Required on first login from new browser/device
-- "Remember this device" option (30 days)
+3. **Password Authentication** — Single-user auth with:
+   - Password stored as Argon2 hash in `PASSWORD_HASH` env var
+   - Database-backed sessions with 256-bit random tokens
+   - 7-day session expiration
+   - Session tracking (IP address, user agent) for audit
 
 ### Container Isolation
 

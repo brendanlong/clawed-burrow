@@ -47,7 +47,7 @@ server: Home Server {
     sqlite: SQLite {
       sessions: Sessions
       messages: Messages
-      users: Users
+      authSessions: AuthSessions
     }
 
     filesystem: Filesystem {
@@ -92,12 +92,14 @@ data_model: Data Model {
     createdAt: timestamp
   }
 
-  user: User {
+  authSession: AuthSession {
     shape: sql_table
     id: string {constraint: primary_key}
-    username: string
-    passwordHash: string
-    totpSecret: string | null
+    token: string
+    expiresAt: timestamp
+    createdAt: timestamp
+    ipAddress: string | null
+    userAgent: string | null
   }
 
   session.id <- message.sessionId
@@ -109,8 +111,10 @@ api: tRPC API {
 
   auth_routes: auth {
     login: login()
-    verify: verifyTwoFactor()
     logout: logout()
+    logoutAll: logoutAll()
+    listSessions: listSessions()
+    deleteSession: deleteSession()
   }
 
   session_routes: sessions {
