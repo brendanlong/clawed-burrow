@@ -77,3 +77,42 @@ export function formatAsJson(content: unknown): string {
     return String(content);
   }
 }
+
+/**
+ * Build an array of messages representing a tool call and its result.
+ * Creates a format suitable for copying to clipboard with both
+ * the assistant's tool_use and the user's tool_result.
+ */
+export function buildToolMessages(tool: ToolCall): unknown[] {
+  const messages: unknown[] = [];
+
+  // Add the assistant message with the tool_use
+  messages.push({
+    role: 'assistant',
+    content: [
+      {
+        type: 'tool_use',
+        id: tool.id,
+        name: tool.name,
+        input: tool.input,
+      },
+    ],
+  });
+
+  // Add the user message with the tool_result if we have output
+  if (tool.output !== undefined) {
+    messages.push({
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: tool.id,
+          content: tool.output,
+          ...(tool.is_error && { is_error: true }),
+        },
+      ],
+    });
+  }
+
+  return messages;
+}
