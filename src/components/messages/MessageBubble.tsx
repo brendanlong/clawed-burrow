@@ -12,6 +12,7 @@ import { ToolCallDisplay } from './ToolCallDisplay';
 import { ToolResultDisplay } from './ToolResultDisplay';
 import { SystemInitDisplay } from './SystemInitDisplay';
 import { ResultDisplay } from './ResultDisplay';
+import { HookResponseDisplay } from './HookResponseDisplay';
 import { formatAsJson } from './types';
 import type { ToolResultMap, ContentBlock, MessageContent } from './types';
 
@@ -157,6 +158,7 @@ function isRecognizedMessage(
         | 'system'
         | 'systemInit'
         | 'systemError'
+        | 'hookResponse'
         | 'result';
     }
   | { recognized: false } {
@@ -200,6 +202,11 @@ function isRecognizedMessage(
       return { recognized: true, category: 'systemError' };
     }
     return { recognized: false };
+  }
+
+  // Hook response messages
+  if (type === 'system' && content.subtype === 'hook_response') {
+    return { recognized: true, category: 'hookResponse' };
   }
 
   // Other system messages
@@ -276,6 +283,15 @@ export function MessageBubble({
     return (
       <div className="w-full max-w-[85%]">
         <SystemInitDisplay content={content} />
+      </div>
+    );
+  }
+
+  // Hook response messages get their own compact display
+  if (category === 'hookResponse') {
+    return (
+      <div className="w-full max-w-[85%]">
+        <HookResponseDisplay content={content} />
       </div>
     );
   }
