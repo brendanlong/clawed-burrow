@@ -82,8 +82,8 @@ async function processClaudeStream(
   const saveErrorMessage = async (errorText: string) => {
     const errorContent = JSON.stringify({
       type: 'system',
-      error: true,
-      message: errorText,
+      subtype: 'error',
+      content: [{ type: 'text', text: errorText }],
     });
     await prisma.message.create({
       data: {
