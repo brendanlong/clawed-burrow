@@ -1,17 +1,25 @@
 'use client';
 
 import { useMemo } from 'react';
-import { marked } from 'marked';
+import { marked, Renderer } from 'marked';
 
 interface MarkdownContentProps {
   content: string;
   className?: string;
 }
 
+// Create custom renderer that opens links in new windows
+const renderer = new Renderer();
+renderer.link = ({ href, title, text }) => {
+  const titleAttr = title ? ` title="${title}"` : '';
+  return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+};
+
 // Configure marked options
 marked.setOptions({
   gfm: true, // GitHub Flavored Markdown
   breaks: true, // Convert \n to <br>
+  renderer,
 });
 
 export function MarkdownContent({ content, className = '' }: MarkdownContentProps) {
