@@ -247,7 +247,7 @@ function SessionView({ sessionId }: { sessionId: string }) {
   const isClaudeRunning = runningData?.running ?? false;
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col min-h-0">
       <SessionHeader
         session={session}
         onStart={() => startMutation.mutate({ sessionId })}
@@ -278,7 +278,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-background flex flex-col">
+      <div className="h-screen bg-background flex flex-col overflow-hidden">
         <Header />
         <SessionView sessionId={resolvedParams.id} />
       </div>
