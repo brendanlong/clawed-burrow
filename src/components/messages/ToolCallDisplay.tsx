@@ -1,12 +1,10 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
-import { CopyButton } from './CopyButton';
-import { formatAsJson, buildToolMessages } from './types';
 import { processTerminalOutput, isTerminalOutput } from '@/lib/terminal-output';
 import type { ToolCall } from './types';
 
@@ -22,12 +20,6 @@ export function ToolCallDisplay({ tool }: { tool: ToolCall }) {
   // Extract description from input if present (e.g., Bash tool)
   const inputObj = tool.input as Record<string, unknown> | undefined;
   const description = inputObj?.description as string | undefined;
-
-  // Build copy text with both tool call and result as an array of messages
-  const getCopyText = useCallback(() => {
-    const messages = buildToolMessages(tool);
-    return formatAsJson(messages);
-  }, [tool]);
 
   // Process terminal output (ANSI codes, progress bars) for Bash commands
   const processedOutput = useMemo(() => {
@@ -117,9 +109,6 @@ export function ToolCallDisplay({ tool }: { tool: ToolCall }) {
           </CollapsibleContent>
         </Card>
       </Collapsible>
-      <div className="mt-1">
-        <CopyButton getText={getCopyText} />
-      </div>
     </div>
   );
 }

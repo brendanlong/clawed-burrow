@@ -1,12 +1,10 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
-import { CopyButton } from './CopyButton';
-import { formatAsJson, buildToolMessages } from './types';
 import type { ToolCall } from './types';
 
 interface GlobInput {
@@ -77,12 +75,6 @@ export function GlobDisplay({ tool }: { tool: ToolCall }) {
   }, [tool.output]);
 
   const groupedFiles = useMemo(() => groupByDirectory(files), [files]);
-
-  // Build copy text with both tool call and result as an array of messages
-  const getCopyText = useCallback(() => {
-    const messages = buildToolMessages(tool);
-    return formatAsJson(messages);
-  }, [tool]);
 
   // File icon component
   const FileIcon = () => (
@@ -215,9 +207,6 @@ export function GlobDisplay({ tool }: { tool: ToolCall }) {
           </CollapsibleContent>
         </Card>
       </Collapsible>
-      <div className="mt-1">
-        <CopyButton getText={getCopyText} />
-      </div>
     </div>
   );
 }

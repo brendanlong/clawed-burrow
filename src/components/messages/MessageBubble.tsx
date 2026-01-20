@@ -15,8 +15,8 @@ import { ToolResultDisplay } from './ToolResultDisplay';
 import { SystemInitDisplay } from './SystemInitDisplay';
 import { ResultDisplay } from './ResultDisplay';
 import { HookResponseDisplay } from './HookResponseDisplay';
-import { formatAsJson } from './types';
-import type { ToolResultMap, ContentBlock, MessageContent } from './types';
+import { formatAsJson, buildToolMessages } from './types';
+import type { ToolResultMap, ContentBlock, MessageContent, ToolCall } from './types';
 
 /**
  * Extract text content from message content blocks.
@@ -270,14 +270,55 @@ export function MessageBubble({
   const isUser = category === 'user';
   const isAssistant = category === 'assistant';
 
-  // Compute copy text - for user/assistant, copy raw text; for others, copy JSON
+  // Build tool call objects with results for assistant messages
+  const toolCalls = useMemo((): ToolCall[] => {
+    if (!isAssistant) return [];
+
+    const messageContent = content.message?.content;
+    if (!Array.isArray(messageContent)) return [];
+
+    // Extract tool_use blocks from message content
+    const toolUseBlocks = messageContent.filter(
+      (block): block is ContentBlock => block.type === 'tool_use'
+    );
+
+    return toolUseBlocks.map((block) => {
+      const result = block.id ? toolResults?.get(block.id) : undefined;
+      return {
+        name: block.name || 'Unknown',
+        id: block.id,
+        input: block.input,
+        output: result?.content,
+        is_error: result?.is_error,
+      };
+    });
+  }, [isAssistant, content, toolResults]);
+
+  // Compute copy text - for user/assistant, copy raw text + tool calls; for others, copy JSON
   const getCopyText = useCallback(() => {
-    if (isUser || isAssistant) {
+    if (isUser) {
       const text = extractTextContent(content);
       return text ?? formatAsJson(content);
     }
+    if (isAssistant) {
+      const text = extractTextContent(content);
+      // If there are tool calls, include them in the copy output
+      if (toolCalls.length > 0) {
+        const parts: string[] = [];
+        if (text) {
+          parts.push(text);
+        }
+        // Add each tool call and result
+        for (const tool of toolCalls) {
+          const toolMessages = buildToolMessages(tool);
+          parts.push(formatAsJson(toolMessages));
+        }
+        return parts.join('\n\n');
+      }
+      return text ?? formatAsJson(content);
+    }
     return formatAsJson(content);
-  }, [content, isUser, isAssistant]);
+  }, [content, isUser, isAssistant, toolCalls]);
 
   // Unrecognized messages get the raw JSON display (collapsed by default)
   if (!recognition.recognized) {
