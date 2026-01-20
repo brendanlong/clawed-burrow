@@ -68,6 +68,31 @@ function emitClaudeRunning(sessionId: string, running: boolean): void {
   serverEvents.emit('claudeRunning', { sessionId, running });
 }
 
+// Helper to save a message using upsert to handle duplicates gracefully
+async function saveMessage(
+  sessionId: string,
+  msgId: string,
+  sequence: number,
+  type: string,
+  content: string
+): Promise<void> {
+  await prisma.message.upsert({
+    where: { id: msgId },
+    create: { id: msgId, sessionId, sequence, type, content },
+    update: {},
+  });
+  emitNewMessage(sessionId, msgId, sequence, type);
+}
+
+// Extract message ID from parsed Claude JSON, falling back to new UUID
+function getMessageId(parsed: unknown): string {
+  return (
+    (parsed as { uuid?: string; id?: string }).uuid ||
+    (parsed as { uuid?: string; id?: string }).id ||
+    uuid()
+  );
+}
+
 function getOutputFilePath(sessionId: string): string {
   return `/workspace/${getOutputFileName(sessionId)}`;
 }
@@ -114,16 +139,13 @@ export async function runClaudeCommand(
   // Store the user prompt first
   const userMsgId = uuid();
   const userMsgSeq = sequence++;
-  await prisma.message.create({
-    data: {
-      id: userMsgId,
-      sessionId,
-      sequence: userMsgSeq,
-      type: 'user',
-      content: JSON.stringify({ type: 'user', content: prompt }),
-    },
-  });
-  emitNewMessage(sessionId, userMsgId, userMsgSeq, 'user');
+  await saveMessage(
+    sessionId,
+    userMsgId,
+    userMsgSeq,
+    'user',
+    JSON.stringify({ type: 'user', content: prompt })
+  );
 
   // Build the Claude command
   // Use --resume for subsequent messages, --session-id for the first
@@ -207,24 +229,10 @@ export async function runClaudeCommand(
           }
 
           const messageType = getMessageType(parsed);
-          const msgId =
-            (parsed as { uuid?: string; id?: string }).uuid ||
-            (parsed as { uuid?: string; id?: string }).id ||
-            uuid();
-
+          const msgId = getMessageId(parsed);
           const msgSeq = sequence++;
           log('runClaudeCommand', 'Saving message', { sessionId, sequence: msgSeq, messageType });
-
-          await prisma.message.create({
-            data: {
-              id: msgId,
-              sessionId,
-              sequence: msgSeq,
-              type: messageType,
-              content: line,
-            },
-          });
-          emitNewMessage(sessionId, msgId, msgSeq, messageType);
+          await saveMessage(sessionId, msgId, msgSeq, messageType, line);
 
           // Update last processed sequence for recovery
           await prisma.claudeProcess
@@ -258,22 +266,9 @@ export async function runClaudeCommand(
                 continue;
               }
               const messageType = getMessageType(parsed);
-              const msgId =
-                (parsed as { uuid?: string; id?: string }).uuid ||
-                (parsed as { uuid?: string; id?: string }).id ||
-                uuid();
-
+              const msgId = getMessageId(parsed);
               const msgSeq = sequence++;
-              await prisma.message.create({
-                data: {
-                  id: msgId,
-                  sessionId,
-                  sequence: msgSeq,
-                  type: messageType,
-                  content: line,
-                },
-              });
-              emitNewMessage(sessionId, msgId, msgSeq, messageType);
+              await saveMessage(sessionId, msgId, msgSeq, messageType, line);
               totalLines++;
             }
 
@@ -408,94 +403,44 @@ async function catchUpFromOutputFile(
   let linesProcessed = 0;
   let linesSkipped = 0;
 
-  // Process all lines and skip any that are already in the DB (by message ID).
-  // This is more robust than trying to calculate which lines to skip based on
-  // sequence numbers, since sequence numbers don't map 1:1 to file line numbers.
+  // Process all lines. The saveMessage helper uses upsert to handle duplicates gracefully.
+  // If we've already saved a message with this ID, upsert will skip it.
   for (const line of lines) {
     if (!line.trim()) continue;
 
     let parsed: unknown;
+    let msgId: string;
+    let messageType: string;
+    let content: string;
+
     try {
       parsed = JSON.parse(line);
+      msgId = getMessageId(parsed);
+      messageType = getMessageType(parsed);
+      content = line;
     } catch {
-      // Generate deterministic ID from content so we can detect duplicates
-      const errorId = uuidv5(`${sessionId}:error:${line}`, ERROR_LINE_NAMESPACE);
-      const existingError = await prisma.message.findUnique({
-        where: { id: errorId },
-        select: { id: true },
+      // Generate deterministic ID from error line content so duplicates are detected
+      msgId = uuidv5(`${sessionId}:error:${line}`, ERROR_LINE_NAMESPACE);
+      messageType = 'system';
+      content = JSON.stringify({
+        type: 'system',
+        subtype: 'error',
+        content: [{ type: 'text', text: line }],
       });
-      if (existingError) {
-        linesSkipped++;
-        continue;
-      }
-
-      // Save as error
-      const errorSeq = sequence++;
-      await prisma.message.create({
-        data: {
-          id: errorId,
-          sessionId,
-          sequence: errorSeq,
-          type: 'system',
-          content: JSON.stringify({
-            type: 'system',
-            subtype: 'error',
-            content: [{ type: 'text', text: line }],
-          }),
-        },
-      });
-      emitNewMessage(sessionId, errorId, errorSeq, 'system');
-      linesProcessed++;
-      continue;
     }
 
-    const messageType = getMessageType(parsed);
-    const msgId =
-      (parsed as { uuid?: string; id?: string }).uuid ||
-      (parsed as { uuid?: string; id?: string }).id ||
-      uuid();
-
-    // Check if this message already exists by ID (could have been processed before)
-    const existingById = await prisma.message.findUnique({
+    // Check if already exists (upsert would no-op, but we want to track stats)
+    const existing = await prisma.message.findUnique({
       where: { id: msgId },
       select: { id: true },
     });
-    if (existingById) {
-      // Already processed, skip
+    if (existing) {
       linesSkipped++;
       continue;
     }
 
-    // Check if a message exists at this sequence (could be from a different processing run)
-    const existingBySequence = await prisma.message.findUnique({
-      where: { sessionId_sequence: { sessionId, sequence } },
-      select: { id: true },
-    });
-    if (existingBySequence) {
-      // Sequence already taken, increment and try again
-      sequence++;
-      // Re-check at new sequence
-      const existingAtNewSeq = await prisma.message.findUnique({
-        where: { sessionId_sequence: { sessionId, sequence } },
-        select: { id: true },
-      });
-      if (existingAtNewSeq) {
-        // Skip this line, sequence tracking is off
-        continue;
-      }
-    }
-
     const msgSeq = sequence++;
-    await prisma.message.create({
-      data: {
-        id: msgId,
-        sessionId,
-        sequence: msgSeq,
-        type: messageType,
-        content: line,
-      },
-    });
-    emitNewMessage(sessionId, msgId, msgSeq, messageType);
+    await saveMessage(sessionId, msgId, msgSeq, messageType, content);
     linesProcessed++;
   }
 
@@ -560,16 +505,9 @@ async function processOutputFileWithExecId(
           }
 
           const messageType = getMessageType(parsed);
-          const msgId =
-            (parsed as { uuid?: string; id?: string }).uuid ||
-            (parsed as { uuid?: string; id?: string }).id ||
-            uuid();
-
+          const msgId = getMessageId(parsed);
           const msgSeq = sequence++;
-          await prisma.message.create({
-            data: { id: msgId, sessionId, sequence: msgSeq, type: messageType, content: line },
-          });
-          emitNewMessage(sessionId, msgId, msgSeq, messageType);
+          await saveMessage(sessionId, msgId, msgSeq, messageType, line);
           await updateLastSequence(sessionId, msgSeq);
         }
       });
@@ -598,22 +536,9 @@ async function processOutputFileWithExecId(
                 continue;
               }
               const messageType = getMessageType(parsed);
-              const msgId =
-                (parsed as { uuid?: string; id?: string }).uuid ||
-                (parsed as { uuid?: string; id?: string }).id ||
-                uuid();
-
+              const msgId = getMessageId(parsed);
               const msgSeq = sequence++;
-              await prisma.message.create({
-                data: {
-                  id: msgId,
-                  sessionId,
-                  sequence: msgSeq,
-                  type: messageType,
-                  content: line,
-                },
-              });
-              emitNewMessage(sessionId, msgId, msgSeq, messageType);
+              await saveMessage(sessionId, msgId, msgSeq, messageType, line);
               totalLines++;
             }
 
