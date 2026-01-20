@@ -129,7 +129,7 @@ The application uses NVIDIA Container Toolkit for GPU access. Ensure you have:
 3. **Verify GPU access in Docker:**
 
    ```bash
-   docker run --rm --gpus all nvidia/cuda:12.1-base-ubuntu22.04 nvidia-smi
+   docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
    ```
 
    This should display your GPU information if everything is configured correctly.
