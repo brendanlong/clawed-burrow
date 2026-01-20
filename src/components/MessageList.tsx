@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import { MessageBubble, type ToolResultMap } from './messages';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -98,6 +98,31 @@ function buildToolResultMap(messages: Message[]): {
   return { resultMap, pairedMessageIds };
 }
 
+// Extract TodoWrite tool call IDs from messages, ordered by sequence
+function getTodoWriteIds(messages: Message[]): string[] {
+  const ids: string[] = [];
+  // Sort by sequence to ensure correct ordering
+  const sortedMessages = [...messages].sort((a, b) => a.sequence - b.sequence);
+  for (const msg of sortedMessages) {
+    if (msg.type === 'assistant') {
+      const content = msg.content as MessageContent | undefined;
+      const blocks = content?.message?.content;
+      if (Array.isArray(blocks)) {
+        for (const block of blocks) {
+          if (
+            block.type === 'tool_use' &&
+            (block as ContentBlock & { name?: string }).name === 'TodoWrite' &&
+            block.id
+          ) {
+            ids.push(block.id);
+          }
+        }
+      }
+    }
+  }
+  return ids;
+}
+
 interface MessageListProps {
   messages: Message[];
   isLoading: boolean;
@@ -110,8 +135,22 @@ export function MessageList({ messages, isLoading, hasMore, onLoadMore }: Messag
   const bottomRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
 
+  // Track which TodoWrite components have been manually toggled by the user
+  const [manuallyToggledTodoIds, setManuallyToggledTodoIds] = useState<Set<string>>(new Set());
+
   // Build the tool result map and determine which messages to hide
   const { resultMap, pairedMessageIds } = useMemo(() => buildToolResultMap(messages), [messages]);
+
+  // Find the latest TodoWrite ID (last one by sequence)
+  const latestTodoWriteId = useMemo(() => {
+    const todoIds = getTodoWriteIds(messages);
+    return todoIds.length > 0 ? todoIds[todoIds.length - 1] : null;
+  }, [messages]);
+
+  // Callback for when a TodoWrite is manually toggled
+  const handleTodoManualToggle = useCallback((toolId: string) => {
+    setManuallyToggledTodoIds((prev) => new Set([...prev, toolId]));
+  }, []);
 
   // Filter out messages that have been fully paired with their tool_use
   const visibleMessages = useMemo(
@@ -182,6 +221,9 @@ export function MessageList({ messages, isLoading, hasMore, onLoadMore }: Messag
                 content: message.content,
               }}
               toolResults={resultMap}
+              latestTodoWriteId={latestTodoWriteId}
+              manuallyToggledTodoIds={manuallyToggledTodoIds}
+              onTodoManualToggle={handleTodoManualToggle}
             />
           </div>
         );

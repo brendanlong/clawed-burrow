@@ -38,7 +38,17 @@ function extractTextContent(content: MessageContent): string | null {
   return null;
 }
 
-function renderContentBlocks(blocks: ContentBlock[], toolResults?: ToolResultMap): React.ReactNode {
+interface TodoWriteTrackingProps {
+  latestTodoWriteId: string | null;
+  manuallyToggledTodoIds: Set<string>;
+  onTodoManualToggle: (toolId: string) => void;
+}
+
+function renderContentBlocks(
+  blocks: ContentBlock[],
+  toolResults?: ToolResultMap,
+  todoTracking?: TodoWriteTrackingProps
+): React.ReactNode {
   const textBlocks: string[] = [];
   const toolUseBlocks: ContentBlock[] = [];
 
@@ -68,7 +78,24 @@ function renderContentBlocks(blocks: ContentBlock[], toolResults?: ToolResultMap
 
             // Use specialized display for specific tools
             if (block.name === 'TodoWrite') {
-              return <TodoWriteDisplay key={block.id} tool={tool} />;
+              const isLatest = todoTracking && block.id === todoTracking.latestTodoWriteId;
+              const wasManuallyToggled =
+                todoTracking && block.id
+                  ? todoTracking.manuallyToggledTodoIds.has(block.id)
+                  : false;
+              return (
+                <TodoWriteDisplay
+                  key={block.id}
+                  tool={tool}
+                  isLatest={isLatest ?? false}
+                  wasManuallyToggled={wasManuallyToggled}
+                  onManualToggle={() => {
+                    if (block.id && todoTracking) {
+                      todoTracking.onTodoManualToggle(block.id);
+                    }
+                  }}
+                />
+              );
             }
 
             return <ToolCallDisplay key={block.id} tool={tool} />;
@@ -79,13 +106,17 @@ function renderContentBlocks(blocks: ContentBlock[], toolResults?: ToolResultMap
   );
 }
 
-function renderContent(content: unknown, toolResults?: ToolResultMap): React.ReactNode {
+function renderContent(
+  content: unknown,
+  toolResults?: ToolResultMap,
+  todoTracking?: TodoWriteTrackingProps
+): React.ReactNode {
   if (typeof content === 'string') {
     return <MarkdownContent content={content} />;
   }
 
   if (Array.isArray(content)) {
-    return renderContentBlocks(content as ContentBlock[], toolResults);
+    return renderContentBlocks(content as ContentBlock[], toolResults, todoTracking);
   }
 
   return null;
@@ -191,10 +222,27 @@ function isRecognizedMessage(
 export function MessageBubble({
   message,
   toolResults,
+  latestTodoWriteId,
+  manuallyToggledTodoIds,
+  onTodoManualToggle,
 }: {
   message: { type: string; content: unknown };
   toolResults?: ToolResultMap;
+  latestTodoWriteId?: string | null;
+  manuallyToggledTodoIds?: Set<string>;
+  onTodoManualToggle?: (toolId: string) => void;
 }) {
+  // Build todoTracking prop if all required values are provided
+  const todoTracking: TodoWriteTrackingProps | undefined = useMemo(() => {
+    if (latestTodoWriteId !== undefined && manuallyToggledTodoIds && onTodoManualToggle) {
+      return {
+        latestTodoWriteId,
+        manuallyToggledTodoIds,
+        onTodoManualToggle,
+      };
+    }
+    return undefined;
+  }, [latestTodoWriteId, manuallyToggledTodoIds, onTodoManualToggle]);
   const { type } = message;
   const content = useMemo(() => (message.content || {}) as MessageContent, [message.content]);
 
@@ -288,7 +336,7 @@ export function MessageBubble({
         )}
 
         {/* Render content (works for both regular messages and errors now) */}
-        {renderContent(displayContent, toolResults)}
+        {renderContent(displayContent, toolResults, todoTracking)}
 
         {content.tool_calls && content.tool_calls.length > 0 && (
           <div className="mt-2 space-y-2">

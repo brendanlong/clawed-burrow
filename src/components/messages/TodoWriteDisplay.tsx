@@ -7,12 +7,38 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Badge } from '@/components/ui/badge';
 import type { ToolCall, TodoItem } from './types';
 
+interface TodoWriteDisplayProps {
+  tool: ToolCall;
+  /** Whether this is the latest/most recent TodoWrite in the conversation */
+  isLatest?: boolean;
+  /** Whether the user has manually toggled this TodoWrite's expand/collapse state */
+  wasManuallyToggled?: boolean;
+  /** Callback when the user manually toggles expand/collapse */
+  onManualToggle?: () => void;
+}
+
 /**
  * Specialized display for TodoWrite tool calls.
  * Shows a checklist-style view with status indicators.
+ *
+ * Auto-collapse behavior:
+ * - Latest TodoWrite is expanded by default
+ * - Older TodoWrites are collapsed automatically when a new one arrives
+ * - User's manual expand/collapse overrides auto-collapse behavior
  */
-export function TodoWriteDisplay({ tool }: { tool: ToolCall }) {
-  const [expanded, setExpanded] = useState(true);
+export function TodoWriteDisplay({
+  tool,
+  isLatest = true,
+  wasManuallyToggled = false,
+  onManualToggle,
+}: TodoWriteDisplayProps) {
+  // Compute expanded state: if user hasn't manually toggled, follow isLatest
+  // If user has manually toggled, we need local state to track their choice
+  const [manualExpandedState, setManualExpandedState] = useState(true);
+
+  // Determine actual expanded state based on whether user has manually toggled
+  const expanded = wasManuallyToggled ? manualExpandedState : isLatest;
+
   const inputObj = tool.input as { todos?: TodoItem[] } | undefined;
   const todos = inputObj?.todos ?? [];
 
@@ -65,8 +91,14 @@ export function TodoWriteDisplay({ tool }: { tool: ToolCall }) {
     }
   };
 
+  // Handle user toggle - mark as manually toggled and update local state
+  const handleOpenChange = (open: boolean) => {
+    onManualToggle?.();
+    setManualExpandedState(open);
+  };
+
   return (
-    <Collapsible open={expanded} onOpenChange={setExpanded}>
+    <Collapsible open={expanded} onOpenChange={handleOpenChange}>
       <Card className="mt-2 border-blue-200 dark:border-blue-800">
         <CollapsibleTrigger className="w-full px-3 py-2 text-left flex items-center justify-between text-sm hover:bg-muted/50 rounded-t-xl">
           <div className="flex items-center gap-2">
