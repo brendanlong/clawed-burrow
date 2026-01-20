@@ -143,7 +143,6 @@ function SessionView({ sessionId }: { sessionId: string }) {
             }
           }
         }
-        if (oldestSequence === undefined) return undefined;
         return { sequence: oldestSequence, direction: 'backward' as const };
       },
       // For loading NEWER messages (polling)
@@ -158,8 +157,6 @@ function SessionView({ sessionId }: { sessionId: string }) {
             }
           }
         }
-        // Don't page forward until we have our first page from the backward cursor
-        if (newestSequence === undefined) return undefined;
         return { sequence: newestSequence, direction: 'forward' as const };
       },
     }
