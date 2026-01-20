@@ -1,7 +1,6 @@
 'use client';
 
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
-import { useInView } from 'react-intersection-observer';
 import { MessageBubble, type ToolResultMap } from './messages';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -132,25 +131,38 @@ interface MessageListProps {
 
 export function MessageList({ messages, isLoading, hasMore, onLoadMore }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const topSentinelRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
+  const hasInitialScrolled = useRef(false);
 
   // Track which TodoWrite components have been manually toggled by the user
   const [manuallyToggledTodoIds, setManuallyToggledTodoIds] = useState<Set<string>>(new Set());
 
-  // Intersection observer for loading older messages when scrolling up
-  // rootMargin triggers load when sentinel is within 50% of viewport height from being visible
-  const { ref: topSentinelRef, inView: topInView } = useInView({
-    threshold: 0,
-    rootMargin: '50% 0px 0px 0px',
-  });
-
-  // Trigger load more when top sentinel becomes visible
+  // Manual IntersectionObserver to detect when sentinel enters viewport
+  // Uses the scroll container as root so rootMargin works relative to the container
   useEffect(() => {
-    if (topInView && hasMore && !isLoading) {
-      onLoadMore();
-    }
-  }, [topInView, hasMore, isLoading, onLoadMore]);
+    const container = containerRef.current;
+    const sentinel = topSentinelRef.current;
+    if (!container || !sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting && hasMore && !isLoading && hasInitialScrolled.current) {
+          onLoadMore();
+        }
+      },
+      {
+        root: container,
+        rootMargin: '50% 0px 0px 0px',
+        threshold: 0,
+      }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, isLoading, onLoadMore]);
 
   // Build the tool result map and determine which messages to hide
   const { resultMap, pairedMessageIds } = useMemo(() => buildToolResultMap(messages), [messages]);
@@ -172,13 +184,24 @@ export function MessageList({ messages, isLoading, hasMore, onLoadMore }: Messag
     [messages, pairedMessageIds]
   );
 
-  const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = useCallback((instant = false) => {
+    bottomRef.current?.scrollIntoView({ behavior: instant ? 'instant' : 'smooth' });
   }, []);
+
+  // Initial scroll to bottom - instant, no animation
+  useEffect(() => {
+    if (!hasInitialScrolled.current && messages.length > 0) {
+      hasInitialScrolled.current = true;
+      // Use requestAnimationFrame to ensure DOM has rendered
+      requestAnimationFrame(() => {
+        scrollToBottom(true);
+      });
+    }
+  }, [messages, scrollToBottom]);
 
   // Auto-scroll to bottom when new messages arrive, if user was at bottom
   useEffect(() => {
-    if (isAtBottomRef.current) {
+    if (hasInitialScrolled.current && isAtBottomRef.current) {
       scrollToBottom();
     }
   }, [messages, scrollToBottom]);
@@ -199,16 +222,18 @@ export function MessageList({ messages, isLoading, hasMore, onLoadMore }: Messag
       className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4"
     >
       {/* Sentinel for triggering infinite scroll - placed before messages */}
-      <div ref={topSentinelRef} className="h-1" />
+      {/* overflow-anchor:none prevents browser from anchoring to these elements */}
+      {/* so when new messages load above, the view stays on current messages */}
+      <div ref={topSentinelRef} className="h-1" style={{ overflowAnchor: 'none' }} />
 
       {hasMore && isLoading && (
-        <div className="text-center py-2">
+        <div className="text-center py-2" style={{ overflowAnchor: 'none' }}>
           <Spinner size="sm" className="mx-auto" />
         </div>
       )}
 
       {visibleMessages.length === 0 && !isLoading && (
-        <div className="text-center text-muted-foreground py-12">
+        <div className="text-center text-muted-foreground py-12" style={{ overflowAnchor: 'none' }}>
           No messages yet. Start a conversation with Claude!
         </div>
       )}
@@ -235,7 +260,7 @@ export function MessageList({ messages, isLoading, hasMore, onLoadMore }: Messag
         );
       })}
 
-      <div ref={bottomRef} />
+      <div ref={bottomRef} style={{ overflowAnchor: 'none' }} />
     </div>
   );
 }
