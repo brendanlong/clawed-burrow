@@ -231,8 +231,9 @@ export async function getContainerStatus(
 export async function sendSignalToExec(
   containerId: string,
   pid: number,
-  signal: string = 'SIGINT'
+  signal: string = 'INT'
 ): Promise<void> {
+  log('sendSignalToExec', 'Sending signal to PID', { containerId, pid, signal });
   const container = docker.getContainer(containerId);
 
   const exec = await container.exec({
@@ -241,7 +242,33 @@ export async function sendSignalToExec(
     AttachStderr: true,
   });
 
-  await exec.start({ Detach: false });
+  const stream = await exec.start({ Detach: false, Tty: false });
+  stream.resume();
+  await new Promise<void>((resolve) => {
+    stream.on('end', async () => {
+      try {
+        const info = await exec.inspect();
+        log('sendSignalToExec', 'Signal sent', {
+          containerId,
+          pid,
+          signal,
+          exitCode: info.ExitCode,
+        });
+      } catch {
+        log('sendSignalToExec', 'Could not get exit code', { containerId, pid, signal });
+      }
+      resolve();
+    });
+    stream.on('error', (err) => {
+      log('sendSignalToExec', 'Error sending signal', {
+        containerId,
+        pid,
+        signal,
+        error: err.message,
+      });
+      resolve();
+    });
+  });
 }
 
 /**
