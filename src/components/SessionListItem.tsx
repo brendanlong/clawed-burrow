@@ -16,6 +16,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { SessionStatusBadge } from '@/components/SessionStatusBadge';
+import { Spinner } from '@/components/ui/spinner';
 
 interface Session {
   id: string;
@@ -51,8 +52,12 @@ export function SessionListItem({ session, onMutationSuccess }: SessionListItemP
 
   const repoName = session.repoUrl.replace('https://github.com/', '').replace('.git', '');
 
+  const isDeleting = deleteMutation.isPending;
+
   return (
-    <li className="p-4 hover:bg-muted/50 transition-colors">
+    <li
+      className={`p-4 hover:bg-muted/50 transition-all ${isDeleting ? 'opacity-50 pointer-events-none' : ''}`}
+    >
       <div className="flex items-center justify-between">
         <div className="flex-1 min-w-0">
           <Link href={`/session/${session.id}`} className="block">
@@ -91,31 +96,38 @@ export function SessionListItem({ session, onMutationSuccess }: SessionListItemP
                 {stopMutation.isPending ? 'Stopping...' : 'Stop'}
               </Button>
             )}
-            <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-              <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-destructive">
-                  Delete
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete session?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will permanently delete the session &quot;{session.name}&quot; and its
-                    workspace. This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => deleteMutation.mutate({ sessionId: session.id })}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            {isDeleting ? (
+              <Button variant="ghost" size="sm" disabled className="text-destructive">
+                <Spinner size="sm" className="mr-2" />
+                Deleting...
+              </Button>
+            ) : (
+              <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="sm" className="text-destructive">
+                    Delete
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete session?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete the session &quot;{session.name}&quot; and its
+                      workspace. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => deleteMutation.mutate({ sessionId: session.id })}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
         </div>
       </div>
