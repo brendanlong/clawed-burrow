@@ -1,12 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
-import { CopyButton } from './CopyButton';
-import { formatAsJson, buildToolMessages } from './types';
 import type { ToolCall } from './types';
 
 interface EditInput {
@@ -33,12 +31,6 @@ export function EditDisplay({ tool }: { tool: ToolCall }) {
 
   // Extract just the filename for the header
   const fileName = filePath.split('/').pop() ?? filePath;
-
-  // Build copy text with both tool call and result as an array of messages
-  const getCopyText = useCallback(() => {
-    const messages = buildToolMessages(tool);
-    return formatAsJson(messages);
-  }, [tool]);
 
   return (
     <div className="group">
@@ -133,9 +125,6 @@ export function EditDisplay({ tool }: { tool: ToolCall }) {
           </CollapsibleContent>
         </Card>
       </Collapsible>
-      <div className="mt-1">
-        <CopyButton getText={getCopyText} />
-      </div>
     </div>
   );
 }

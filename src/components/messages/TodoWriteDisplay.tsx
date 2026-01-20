@@ -1,12 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
-import { CopyButton } from './CopyButton';
-import { formatAsJson, buildToolMessages } from './types';
 import type { ToolCall, TodoItem } from './types';
 
 interface TodoWriteDisplayProps {
@@ -99,12 +97,6 @@ export function TodoWriteDisplay({
     setManualExpandedState(open);
   };
 
-  // Build copy text with both tool call and result as an array of messages
-  const getCopyText = useCallback(() => {
-    const messages = buildToolMessages(tool);
-    return formatAsJson(messages);
-  }, [tool]);
-
   return (
     <div className="group">
       <Collapsible open={expanded} onOpenChange={handleOpenChange}>
@@ -152,9 +144,6 @@ export function TodoWriteDisplay({
           </CollapsibleContent>
         </Card>
       </Collapsible>
-      <div className="mt-1">
-        <CopyButton getText={getCopyText} />
-      </div>
     </div>
   );
 }
