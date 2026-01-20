@@ -71,10 +71,12 @@ async function configureGitCredentials(containerId: string): Promise<void> {
 
   // Configure git to use a credential helper that reads from GITHUB_TOKEN env var
   // This script echoes the token for GitHub URLs
+  // Note: git sends multiple lines (protocol=https, host=github.com, etc.)
+  // so we must read all input with cat, not just one line with read
   const credentialHelper = `#!/bin/sh
 if [ "$1" = "get" ]; then
-  read -r line
-  if echo "$line" | grep -q "github.com"; then
+  input=$(cat)
+  if echo "$input" | grep -q "host=github.com"; then
     echo "protocol=https"
     echo "host=github.com"
     echo "username=x-access-token"
