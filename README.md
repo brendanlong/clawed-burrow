@@ -1,5 +1,7 @@
 # Claude Code Local Web
 
+> **Note:** This is an unofficial community project and is not affiliated with, endorsed by, or supported by Anthropic. [Claude Code](https://claude.ai/claude-code) is a product of Anthropic, but this web interface is an independent project.
+
 A self-hosted web application that provides mobile-friendly access to Claude Code running on your local machine with GPU support.
 
 ## Features
