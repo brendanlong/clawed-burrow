@@ -90,6 +90,7 @@
       "argon2",
       "bcrypt",
       "cpu-features",
+      "esbuild",
       "prisma",
       "protobufjs",
       "sharp",
