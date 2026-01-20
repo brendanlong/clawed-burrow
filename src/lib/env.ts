@@ -20,6 +20,10 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((val) => (val ? Buffer.from(val, 'base64').toString('utf-8') : undefined)),
+  // Optional path to host pnpm store for sharing across sessions
+  // pnpm's store is safe for concurrent access (atomic operations)
+  // Example: /home/user/.local/share/pnpm/store
+  PNPM_STORE_PATH: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

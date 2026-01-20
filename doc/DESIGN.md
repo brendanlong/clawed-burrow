@@ -242,14 +242,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
-# Install Node.js 20.x and Claude Code
+# Install Node.js 20.x, pnpm, and Claude Code
 RUN mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | \
       gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | \
       tee /etc/apt/sources.list.d/nodesource.list && \
     apt-get update && apt-get install -y nodejs && \
-    npm install -g @anthropic-ai/claude-code
+    npm install -g pnpm @anthropic-ai/claude-code
 
 # Create non-root user with docker group access
 RUN useradd -m -s /bin/bash -u 1000 claudeuser && \
@@ -276,16 +276,23 @@ CMD ["tail", "-f", "/dev/null"]
 
 ```typescript
 async function startSessionContainer(session: Session, githubToken?: string): Promise<string> {
+  const binds = [
+    `${session.workspacePath}:/workspace`,
+    `/var/run/docker.sock:/var/run/docker.sock`,
+    `${CLAUDE_AUTH_PATH}:/home/claudeuser/.claude`,
+  ];
+
+  // Mount shared pnpm store if configured (safe for concurrent access)
+  if (PNPM_STORE_PATH) {
+    binds.push(`${PNPM_STORE_PATH}:/pnpm-store`);
+  }
+
   const container = await docker.createContainer({
     Image: 'claude-code-runner:latest',
     name: `claude-session-${session.id}`,
     Env: githubToken ? [`GITHUB_TOKEN=${githubToken}`] : [],
     HostConfig: {
-      Binds: [
-        `${session.workspacePath}:/workspace`,
-        `/var/run/docker.sock:/var/run/docker.sock`,
-        `${CLAUDE_AUTH_PATH}:/home/claudeuser/.claude`,
-      ],
+      Binds: binds,
       DeviceRequests: [
         {
           Driver: 'nvidia',
@@ -302,6 +309,11 @@ async function startSessionContainer(session: Session, githubToken?: string): Pr
   // Configure git credential helper if token is provided
   if (githubToken) {
     await configureGitCredentials(container.id);
+  }
+
+  // Configure pnpm to use shared store if mounted
+  if (PNPM_STORE_PATH) {
+    await configurePnpmStore(container.id);
   }
 
   return container.id;
@@ -385,6 +397,13 @@ ORDER BY sequence ASC;
 - Create at: https://github.com/settings/personal-access-tokens/new
 - The token is passed as an environment variable to containers
 - A git credential helper is configured automatically inside containers
+
+### Shared pnpm Store
+
+- Set `PNPM_STORE_PATH` to the host's pnpm store path (e.g., `/home/user/.local/share/pnpm/store`)
+- The store is mounted at `/pnpm-store` in containers and pnpm is configured to use it
+- pnpm's store is safe for concurrent access (atomic operations)
+- Only `pnpm store prune` should not run while installs are in progress
 
 ## UI Screens
 

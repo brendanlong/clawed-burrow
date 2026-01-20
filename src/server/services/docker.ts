@@ -43,16 +43,25 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     envVars.push(`GITHUB_TOKEN=${config.githubToken}`);
   }
 
+  // Build volume binds
+  const binds = [
+    `${config.workspacePath}:/workspace`,
+    `/var/run/docker.sock:/var/run/docker.sock`,
+    `${env.CLAUDE_AUTH_PATH}:/home/claudeuser/.claude`,
+  ];
+
+  // Mount shared pnpm store if configured
+  // pnpm's store is safe for concurrent access (atomic operations)
+  if (env.PNPM_STORE_PATH) {
+    binds.push(`${env.PNPM_STORE_PATH}:/pnpm-store`);
+  }
+
   const container = await docker.createContainer({
     Image: CLAUDE_CODE_IMAGE,
     name: containerName,
     Env: envVars,
     HostConfig: {
-      Binds: [
-        `${config.workspacePath}:/workspace`,
-        `/var/run/docker.sock:/var/run/docker.sock`,
-        `${env.CLAUDE_AUTH_PATH}:/home/claudeuser/.claude`,
-      ],
+      Binds: binds,
       DeviceRequests: [
         {
           Driver: 'nvidia',
@@ -69,6 +78,11 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
   // Configure git credential helper if token is provided
   if (config.githubToken) {
     await configureGitCredentials(container.id);
+  }
+
+  // Configure pnpm to use shared store if mounted
+  if (env.PNPM_STORE_PATH) {
+    await configurePnpmStore(container.id);
   }
 
   return container.id;
@@ -137,6 +151,25 @@ async function execAndWait(exec: Docker.Exec): Promise<void> {
     stream.on('error', resolve);
     stream.resume(); // Consume the stream
   });
+}
+
+/**
+ * Configure pnpm to use the shared store mounted at /pnpm-store.
+ * pnpm's store is safe for concurrent access (atomic operations).
+ */
+async function configurePnpmStore(containerId: string): Promise<void> {
+  const container = docker.getContainer(containerId);
+
+  // Set pnpm global store-dir to use the mounted shared store
+  const configExec = await container.exec({
+    Cmd: ['pnpm', 'config', 'set', 'store-dir', '/pnpm-store'],
+    AttachStdout: true,
+    AttachStderr: true,
+    User: 'claudeuser',
+  });
+  await execAndWait(configExec);
+
+  log('configurePnpmStore', 'Configured pnpm store-dir', { containerId });
 }
 
 export async function stopContainer(containerId: string): Promise<void> {

@@ -25,8 +25,8 @@ RUN mkdir -p /etc/apt/keyrings && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code
-RUN npm install -g @anthropic-ai/claude-code
+# Install pnpm and Claude Code
+RUN npm install -g pnpm @anthropic-ai/claude-code
 
 # Create a non-root user with UID 1000 (common default for host user)
 # Add to docker group for docker-in-docker capability
@@ -43,6 +43,11 @@ USER claudeuser
 # Set HOME explicitly and add user bin directories to PATH
 ENV HOME=/home/claudeuser
 ENV PATH="/home/claudeuser/.local/bin:${PATH}"
+
+# Configure pnpm to use shared store if mounted at /pnpm-store
+# The store supports concurrent access with atomic operations
+ENV PNPM_HOME="/home/claudeuser/.local/share/pnpm"
+RUN mkdir -p /home/claudeuser/.local/share/pnpm
 
 # Configure git identity for commits
 RUN git config --global user.email "claude@anthropic.com" && \
