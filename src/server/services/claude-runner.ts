@@ -29,6 +29,18 @@ const OUTPUT_FILE_PREFIX = '.claude-output-';
 // Using /usr/bin/claude because that's the installed path and won't match other processes
 const CLAUDE_PROCESS_PATTERN = '/usr/bin/claude';
 
+// System prompt appended to all Claude sessions to ensure proper workflow
+// Since users interact through GitHub PRs (no local access), Claude must always
+// commit, push, and open PRs for any changes to be visible
+const SYSTEM_PROMPT = `IMPORTANT: The user is accessing this session remotely through a web interface and has no local access to the files. They can only see your changes through GitHub. Therefore, you MUST follow this workflow for ANY code changes:
+
+1. Always commit your changes with clear, descriptive commit messages
+2. Always push your commits to the remote repository
+3. If you're working on a new branch or the changes would benefit from review, open a Pull Request using the GitHub CLI (gh pr create)
+4. If a PR already exists for the current branch, just push to update it
+
+Never leave uncommitted or unpushed changes - the user cannot see them otherwise.`;
+
 // Logging helper for debugging
 function log(context: string, message: string, data?: Record<string, unknown>): void {
   const timestamp = new Date().toISOString();
@@ -106,6 +118,8 @@ export async function runClaudeCommand(
     'stream-json',
     '--verbose',
     '--dangerously-skip-permissions',
+    '--append-system-prompt',
+    SYSTEM_PROMPT,
   ];
 
   const outputFile = getOutputFilePath(sessionId);

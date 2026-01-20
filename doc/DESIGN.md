@@ -228,12 +228,26 @@ claude.getHistory({
    claude -p "<prompt>" \
      --session-id <sessionId> \      # or --resume on subsequent
      --output-format stream-json \
-     --dangerously-skip-permissions
+     --dangerously-skip-permissions \
+     --append-system-prompt "<system-prompt>"
    ```
 3. Server reads stdout line by line, parses JSON
 4. Each line saved to database with incrementing sequence number
 5. Lines streamed to client via SSE/WebSocket
 6. On completion, `result` message marks end of turn
+
+### System Prompt
+
+A system prompt is appended to all Claude sessions to ensure proper workflow. Since users interact through the web interface and have no local access to files, Claude must always commit, push, and open PRs for changes to be visible.
+
+The system prompt instructs Claude to:
+
+1. Always commit changes with clear, descriptive commit messages
+2. Always push commits to the remote repository
+3. Open a Pull Request (using `gh pr create`) for new branches or changes that benefit from review
+4. If a PR already exists, just push to update it
+
+This ensures users can see all changes through GitHub, which is their only way to access the codebase.
 
 ### Interruption Flow
 
