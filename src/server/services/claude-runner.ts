@@ -14,6 +14,7 @@ import { prisma } from '@/lib/prisma';
 import { getMessageType } from '@/lib/claude-messages';
 import { DockerStreamDemuxer } from './docker-stream-demuxer';
 import { v4 as uuid, v5 as uuidv5 } from 'uuid';
+import { sseEvents } from './events';
 
 // Namespace UUID for generating deterministic IDs from error line content
 const ERROR_LINE_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
@@ -145,6 +146,9 @@ export async function runClaudeCommand(
   runningProcesses.set(sessionId, { containerId, pid: null });
   log('runClaudeCommand', 'Process registered', { sessionId });
 
+  // Emit Claude running event
+  sseEvents.emitClaudeRunning(sessionId, true);
+
   try {
     // Wait for file to exist
     let attempts = 0;
@@ -209,7 +213,7 @@ export async function runClaudeCommand(
 
           log('runClaudeCommand', 'Saving message', { sessionId, sequence, messageType });
 
-          await prisma.message.create({
+          const message = await prisma.message.create({
             data: {
               id: msgId,
               sessionId,
@@ -218,6 +222,9 @@ export async function runClaudeCommand(
               content: line,
             },
           });
+
+          // Emit new message event
+          sseEvents.emitNewMessage(sessionId, { ...message, content: parsed });
 
           // Update last processed sequence for recovery
           await prisma.claudeProcess
@@ -256,7 +263,7 @@ export async function runClaudeCommand(
                 (parsed as { uuid?: string; id?: string }).id ||
                 uuid();
 
-              await prisma.message.create({
+              const message = await prisma.message.create({
                 data: {
                   id: msgId,
                   sessionId,
@@ -265,6 +272,9 @@ export async function runClaudeCommand(
                   content: line,
                 },
               });
+
+              // Emit new message event
+              sseEvents.emitNewMessage(sessionId, { ...message, content: parsed });
               totalLines++;
             }
 
@@ -290,6 +300,9 @@ export async function runClaudeCommand(
     runningProcesses.delete(sessionId);
     await killProcessesByPattern(containerId, outputFile).catch(() => {});
     await prisma.claudeProcess.delete({ where: { sessionId } }).catch(() => {});
+
+    // Emit Claude stopped event
+    sseEvents.emitClaudeRunning(sessionId, false);
     log('runClaudeCommand', 'Cleanup complete', { sessionId });
   }
 }
@@ -346,6 +359,9 @@ export async function reconnectToClaudeProcess(
 
   runningProcesses.set(sessionId, { containerId, pid: null });
 
+  // Emit Claude running event for reconnection
+  sseEvents.emitClaudeRunning(sessionId, true);
+
   // Start processing the output file in the background using the stored execId
   processOutputFileWithExecId(
     sessionId,
@@ -358,6 +374,8 @@ export async function reconnectToClaudeProcess(
       runningProcesses.delete(sessionId);
       killProcessesByPattern(containerId, getOutputFilePath(sessionId)).catch(() => {});
       prisma.claudeProcess.delete({ where: { sessionId } }).catch(() => {});
+      // Emit Claude stopped event
+      sseEvents.emitClaudeRunning(sessionId, false);
     })
     .catch((err) => {
       console.error(`Error processing reconnected Claude output for ${sessionId}:`, err);
@@ -549,9 +567,12 @@ async function processOutputFileWithExecId(
             (parsed as { uuid?: string; id?: string }).id ||
             uuid();
 
-          await prisma.message.create({
+          const message = await prisma.message.create({
             data: { id: msgId, sessionId, sequence: sequence++, type: messageType, content: line },
           });
+
+          // Emit new message event
+          sseEvents.emitNewMessage(sessionId, { ...message, content: parsed });
           await updateLastSequence(sessionId, sequence - 1);
         }
       });
@@ -585,7 +606,7 @@ async function processOutputFileWithExecId(
                 (parsed as { uuid?: string; id?: string }).id ||
                 uuid();
 
-              await prisma.message.create({
+              const message = await prisma.message.create({
                 data: {
                   id: msgId,
                   sessionId,
@@ -594,6 +615,9 @@ async function processOutputFileWithExecId(
                   content: line,
                 },
               });
+
+              // Emit new message event
+              sseEvents.emitNewMessage(sessionId, { ...message, content: parsed });
               totalLines++;
             }
 

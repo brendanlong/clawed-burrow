@@ -10,6 +10,7 @@ import {
   removeContainer,
   getContainerStatus,
 } from '../services/docker';
+import { sseEvents } from '../services/events';
 
 const sessionStatusSchema = z.enum(['creating', 'running', 'stopped', 'error']);
 
@@ -21,10 +22,11 @@ async function setupSession(
   githubToken?: string
 ): Promise<void> {
   const updateStatus = async (message: string) => {
-    await prisma.session.update({
+    const session = await prisma.session.update({
       where: { id: sessionId },
       data: { statusMessage: message },
     });
+    sseEvents.emitSessionUpdate(sessionId, session);
   };
 
   try {
@@ -42,7 +44,7 @@ async function setupSession(
     });
 
     // Update session with container info
-    await prisma.session.update({
+    const session = await prisma.session.update({
       where: { id: sessionId },
       data: {
         workspacePath,
@@ -51,16 +53,18 @@ async function setupSession(
         statusMessage: null,
       },
     });
+    sseEvents.emitSessionUpdate(sessionId, session);
   } catch (error) {
     // Mark session as error with message
     const errorMessage = error instanceof Error ? error.message : 'Failed to create session';
-    await prisma.session.update({
+    const session = await prisma.session.update({
       where: { id: sessionId },
       data: {
         status: 'error',
         statusMessage: errorMessage,
       },
     });
+    sseEvents.emitSessionUpdate(sessionId, session);
   }
 }
 
@@ -191,6 +195,7 @@ export const sessionsRouter = router({
           },
         });
 
+        sseEvents.emitSessionUpdate(input.sessionId, updatedSession);
         return { session: updatedSession };
       } catch (error) {
         throw new TRPCError({
@@ -223,6 +228,7 @@ export const sessionsRouter = router({
         data: { status: 'stopped' },
       });
 
+      sseEvents.emitSessionUpdate(input.sessionId, updatedSession);
       return { session: updatedSession };
     }),
 

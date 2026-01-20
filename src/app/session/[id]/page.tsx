@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useEffect, useRef, use } from 'react';
+import { useCallback, useMemo, useEffect, useRef, use, useState } from 'react';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Header } from '@/components/Header';
@@ -20,25 +20,19 @@ interface Message {
 }
 
 function SessionView({ sessionId }: { sessionId: string }) {
-  // Fetch session details (poll while creating)
+  // Local state for Claude running status (overridden by SSE, initialized from query)
+  const [claudeRunningOverride, setClaudeRunningOverride] = useState<boolean | null>(null);
+
+  // Fetch session details
   const {
     data: sessionData,
     isLoading: sessionLoading,
     refetch: refetchSession,
-  } = trpc.sessions.get.useQuery(
-    { sessionId },
-    {
-      // Poll every second while session is being created
-      refetchInterval: (query) => {
-        const status = query.state.data?.session?.status;
-        return status === 'creating' ? 1000 : false;
-      },
-    }
-  );
+  } = trpc.sessions.get.useQuery({ sessionId });
 
   // Bidirectional infinite query for message history
   // - fetchNextPage: loads older messages (backward) when user scrolls up
-  // - fetchPreviousPage: loads newer messages (forward) for polling
+  // - fetchPreviousPage: loads newer messages (forward) triggered by SSE
   const {
     data: historyData,
     isLoading: historyLoading,
@@ -49,7 +43,7 @@ function SessionView({ sessionId }: { sessionId: string }) {
   } = trpc.claude.getHistory.useInfiniteQuery(
     { sessionId, limit: 10 },
     {
-      // Limit stored pages to prevent memory growth from polling empty results
+      // Limit stored pages to prevent memory growth
       // With 10 messages per page, this keeps up to 5000 messages in memory
       maxPages: 500,
       initialCursor: {
@@ -70,7 +64,7 @@ function SessionView({ sessionId }: { sessionId: string }) {
         }
         return { sequence: oldestSequence, direction: 'backward' as const };
       },
-      // For loading NEWER messages (polling)
+      // For loading NEWER messages (triggered by SSE)
       getPreviousPageParam: (_firstPage, allPages) => {
         // Find the newest sequence across ALL pages (not just firstPage, which might be empty)
         // This prevents refetching everything if an empty page was prepended
@@ -86,25 +80,56 @@ function SessionView({ sessionId }: { sessionId: string }) {
       },
     }
   );
-  console.log({ historyData });
 
-  // Check if Claude is running
-  const { data: runningData } = trpc.claude.isRunning.useQuery(
+  // Initial fetch of Claude running state
+  const { data: runningData } = trpc.claude.isRunning.useQuery({ sessionId });
+
+  // Use SSE override if available, otherwise use query data
+  const isClaudeRunning = claudeRunningOverride ?? runningData?.running ?? false;
+
+  // Subscribe to session updates via SSE
+  trpc.sse.onSessionUpdate.useSubscription(
     { sessionId },
-    { refetchInterval: 2000 }
+    {
+      onData: () => {
+        // Refetch session when we get an update event
+        refetchSession();
+      },
+      onError: (err) => {
+        console.error('Session SSE error:', err);
+      },
+    }
   );
 
-  // Poll for new messages by calling fetchPreviousPage on an interval
-  useEffect(() => {
-    if (historyLoading) return;
+  // Subscribe to new messages via SSE
+  trpc.sse.onNewMessage.useSubscription(
+    { sessionId },
+    {
+      onData: () => {
+        // Fetch new messages when we get a new message event
+        fetchPreviousPage();
+      },
+      onError: (err) => {
+        console.error('Message SSE error:', err);
+      },
+    }
+  );
 
-    const pollInterval = runningData?.running ? 500 : 5000;
-    const intervalId = setInterval(() => {
-      fetchPreviousPage();
-    }, pollInterval);
-
-    return () => clearInterval(intervalId);
-  }, [historyLoading, runningData?.running, fetchPreviousPage]);
+  // Subscribe to Claude running state via SSE
+  trpc.sse.onClaudeRunning.useSubscription(
+    { sessionId },
+    {
+      onData: (trackedData) => {
+        // Update local state directly from SSE
+        // trackedData is wrapped by tracked() - access the data property
+        const data = trackedData.data;
+        setClaudeRunningOverride(data.running);
+      },
+      onError: (err) => {
+        console.error('Claude running SSE error:', err);
+      },
+    }
+  );
 
   // Mutations
   const startMutation = trpc.sessions.start.useMutation({
@@ -156,7 +181,6 @@ function SessionView({ sessionId }: { sessionId: string }) {
   }, [sessionId, interruptMutation]);
 
   const session = sessionData?.session;
-  const isClaudeRunning = runningData?.running ?? false;
 
   // Track whether we've already sent the initial prompt
   const initialPromptSentRef = useRef(false);

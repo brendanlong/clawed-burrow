@@ -7,6 +7,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Spinner } from '@/components/ui/spinner';
 import { SessionListItem } from '@/components/SessionListItem';
 
+interface Session {
+  id: string;
+  name: string;
+  repoUrl: string;
+  branch: string;
+  status: string;
+  updatedAt: Date;
+}
+
 export function SessionList() {
   const { data, isLoading, refetch } = trpc.sessions.list.useQuery();
 
@@ -18,7 +27,7 @@ export function SessionList() {
     );
   }
 
-  const sessions = data?.sessions || [];
+  const sessions: Session[] = data?.sessions || [];
 
   if (sessions.length === 0) {
     return (
