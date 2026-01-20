@@ -67,6 +67,49 @@ interface MessageContent {
   [key: string]: unknown;
 }
 
+/**
+ * Display component for raw/unrecognized JSON messages.
+ * Shows collapsed by default to avoid cluttering the UI.
+ */
+function RawJsonDisplay({ content, label }: { content: unknown; label?: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const formatJson = (data: unknown): string => {
+    try {
+      return JSON.stringify(data, null, 2);
+    } catch {
+      return String(data);
+    }
+  };
+
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <Card className="border-dashed border-amber-300 dark:border-amber-700">
+        <CollapsibleTrigger className="w-full px-3 py-2 text-left flex items-center justify-between text-sm hover:bg-muted/50 rounded-t-xl">
+          <div className="flex items-center gap-2">
+            <Badge
+              variant="outline"
+              className="text-xs border-amber-500 text-amber-700 dark:text-amber-400"
+            >
+              {label || 'Raw Message'}
+            </Badge>
+            <span className="text-muted-foreground text-xs">Click to expand JSON</span>
+          </div>
+          <span className="text-muted-foreground">{expanded ? '−' : '+'}</span>
+        </CollapsibleTrigger>
+
+        <CollapsibleContent>
+          <CardContent className="p-3">
+            <pre className="bg-muted p-2 rounded overflow-x-auto max-h-96 overflow-y-auto text-xs font-mono">
+              {formatJson(content)}
+            </pre>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
 function ToolCallDisplay({ tool }: { tool: ToolCall }) {
   const [expanded, setExpanded] = useState(false);
   const hasOutput = tool.output !== undefined;
@@ -370,6 +413,85 @@ function getToolResults(content: MessageContent): ContentBlock[] {
   return [];
 }
 
+/**
+ * Check if a message can be recognized and displayed with our typed components.
+ * Returns false if we should fall back to raw JSON display.
+ */
+function isRecognizedMessage(
+  type: string,
+  content: MessageContent
+):
+  | {
+      recognized: true;
+      category:
+        | 'assistant'
+        | 'user'
+        | 'toolResult'
+        | 'system'
+        | 'systemInit'
+        | 'systemError'
+        | 'result';
+    }
+  | { recognized: false } {
+  // Assistant messages must have a valid message.content array
+  if (type === 'assistant') {
+    if (!content.message || !Array.isArray(content.message.content)) {
+      return { recognized: false };
+    }
+    return { recognized: true, category: 'assistant' };
+  }
+
+  // User messages that are tool results
+  if (type === 'user' && isToolResultMessage(content)) {
+    return { recognized: true, category: 'toolResult' };
+  }
+
+  // Regular user messages (prompts) must have text content
+  if (type === 'user') {
+    // User prompts typically have message.content with text blocks
+    if (content.message?.content && Array.isArray(content.message.content)) {
+      return { recognized: true, category: 'user' };
+    }
+    // Or simple content string
+    if (typeof content.content === 'string') {
+      return { recognized: true, category: 'user' };
+    }
+    return { recognized: false };
+  }
+
+  // System init messages
+  if (type === 'system' && content.subtype === 'init') {
+    if (content.model && content.session_id) {
+      return { recognized: true, category: 'systemInit' };
+    }
+    return { recognized: false };
+  }
+
+  // System error messages
+  if (type === 'system' && content.subtype === 'error') {
+    if (Array.isArray(content.content)) {
+      return { recognized: true, category: 'systemError' };
+    }
+    return { recognized: false };
+  }
+
+  // Other system messages
+  if (type === 'system') {
+    return { recognized: true, category: 'system' };
+  }
+
+  // Result messages
+  if (type === 'result') {
+    if (content.subtype && typeof content.session_id === 'string') {
+      return { recognized: true, category: 'result' };
+    }
+    return { recognized: false };
+  }
+
+  // Unknown type
+  return { recognized: false };
+}
+
 export function MessageBubble({
   message,
   toolResults,
@@ -380,16 +502,22 @@ export function MessageBubble({
   const { type } = message;
   const content = (message.content || {}) as MessageContent;
 
-  const isToolResult = type === 'user' && isToolResultMessage(content);
-  const isUser = type === 'user' && !isToolResult;
-  const isAssistant = type === 'assistant';
-  const isSystem = type === 'system';
-  const isResult = type === 'result';
-  const isSystemInit = isSystem && content.subtype === 'init';
-  const isError = isSystem && content.subtype === 'error';
+  // Check if we can properly display this message
+  const recognition = isRecognizedMessage(type, content);
+
+  // Unrecognized messages get the raw JSON display (collapsed by default)
+  if (!recognition.recognized) {
+    return (
+      <div className="w-full max-w-[85%]">
+        <RawJsonDisplay content={message.content} label={`Unknown: ${type}`} />
+      </div>
+    );
+  }
+
+  const { category } = recognition;
 
   // System init messages get their own compact display
-  if (isSystemInit) {
+  if (category === 'systemInit') {
     return (
       <div className="w-full max-w-[85%]">
         <SystemInitDisplay content={content} />
@@ -398,7 +526,7 @@ export function MessageBubble({
   }
 
   // Result messages get their own compact display
-  if (isResult) {
+  if (category === 'result') {
     return (
       <div className="w-full max-w-[85%]">
         <ResultDisplay content={content} />
@@ -407,7 +535,7 @@ export function MessageBubble({
   }
 
   // Tool result messages get their own compact display
-  if (isToolResult) {
+  if (category === 'toolResult') {
     const toolResultBlocks = getToolResults(content);
     return (
       <div className="w-full max-w-[85%]">
@@ -420,13 +548,17 @@ export function MessageBubble({
   // For assistant messages, content is in content.message.content
   // For user/system messages, content is in content.content
   const getDisplayContent = (): unknown => {
-    if (isAssistant && content.message?.content) {
+    if (category === 'assistant' && content.message?.content) {
       return content.message.content;
     }
     return content.content;
   };
 
   const displayContent = getDisplayContent();
+  const isUser = category === 'user';
+  const isAssistant = category === 'assistant';
+  const isSystem = category === 'system';
+  const isError = category === 'systemError';
 
   return (
     <div

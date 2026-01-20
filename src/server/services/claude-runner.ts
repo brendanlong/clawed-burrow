@@ -1,6 +1,6 @@
 import { execInContainer, findProcessInContainer, sendSignalToExec } from './docker';
 import { prisma } from '@/lib/prisma';
-import type { MessageType } from '@/lib/types';
+import { parseClaudeStreamLine, getMessageType } from '@/lib/claude-messages';
 import { v4 as uuid } from 'uuid';
 
 // Track running Claude processes per session
@@ -121,27 +121,43 @@ async function processClaudeStream(
       for (const line of lines) {
         if (!line.trim()) continue;
 
+        let parsed: unknown;
         try {
-          const parsed = JSON.parse(line);
-
-          // Flush any accumulated errors before saving valid message
-          await flushErrorLines();
-
-          const messageType = mapClaudeMessageType(parsed.type);
-
-          await prisma.message.create({
-            data: {
-              id: parsed.id || uuid(),
-              sessionId,
-              sequence: sequence++,
-              type: messageType,
-              content: line,
-            },
-          });
+          parsed = JSON.parse(line);
         } catch {
           // Accumulate unparseable lines to batch them together
           errorLines.push(line);
+          continue;
         }
+
+        // Flush any accumulated errors before saving valid message
+        await flushErrorLines();
+
+        // Validate the parsed JSON against our schemas
+        const parseResult = parseClaudeStreamLine(parsed);
+        const messageType = getMessageType(parsed);
+
+        if (!parseResult.success) {
+          // Log validation failure but still save the message with the raw content
+          // This allows the UI to display it as collapsed raw JSON
+          console.warn(`Failed to validate ${messageType} message:`, parseResult.error);
+        }
+
+        // Extract ID from parsed content if available
+        const msgId =
+          (parsed as { uuid?: string; id?: string }).uuid ||
+          (parsed as { uuid?: string; id?: string }).id ||
+          uuid();
+
+        await prisma.message.create({
+          data: {
+            id: msgId,
+            sessionId,
+            sequence: sequence++,
+            type: messageType,
+            content: line,
+          },
+        });
       }
     });
 
@@ -170,20 +186,6 @@ function stripDockerHeader(chunk: Buffer): string {
     }
   }
   return chunk.toString('utf-8');
-}
-
-function mapClaudeMessageType(type: string): MessageType {
-  switch (type) {
-    case 'user':
-      return 'user';
-    case 'assistant':
-      return 'assistant';
-    case 'result':
-      return 'result';
-    case 'system':
-    default:
-      return 'system';
-  }
 }
 
 export async function interruptClaude(sessionId: string): Promise<boolean> {
