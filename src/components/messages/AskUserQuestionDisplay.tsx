@@ -47,7 +47,7 @@ function CheckboxIcon({ checked }: { checked?: boolean }) {
   return (
     <svg
       className={cn(
-        'w-4 h-4 flex-shrink-0',
+        'w-4 h-4 flex-shrink-0 mt-0.5',
         checked ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'
       )}
       fill="none"
@@ -73,7 +73,7 @@ function RadioIcon({ selected }: { selected?: boolean }) {
   return (
     <svg
       className={cn(
-        'w-4 h-4 flex-shrink-0',
+        'w-4 h-4 flex-shrink-0 mt-0.5',
         selected ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'
       )}
       fill="none"
@@ -87,20 +87,89 @@ function RadioIcon({ selected }: { selected?: boolean }) {
   );
 }
 
+interface AskUserQuestionDisplayProps {
+  tool: ToolCall;
+  /** Callback to send a response to Claude */
+  onSendResponse?: (response: string) => void;
+  /** Whether Claude is currently running (disables clicking options) */
+  isClaudeRunning?: boolean;
+}
+
 /**
  * Specialized display for AskUserQuestion tool calls.
- * Shows a nicely formatted question with options for the user to consider.
+ * Shows a nicely formatted question with clickable options.
  */
-export function AskUserQuestionDisplay({ tool }: { tool: ToolCall }) {
+export function AskUserQuestionDisplay({
+  tool,
+  onSendResponse,
+  isClaudeRunning,
+}: AskUserQuestionDisplayProps) {
   const [expanded, setExpanded] = useState(true);
+  const [selectedOptions, setSelectedOptions] = useState<Map<number, Set<number>>>(new Map());
+
   const hasOutput = tool.output !== undefined;
-  const isPending = !hasOutput;
-  const isError = tool.is_error;
+
+  // Check if this is a "real" error vs just waiting for input
+  // Claude Code returns is_error: true with "Answer questions?" when waiting for input
+  const isWaitingForInput =
+    tool.is_error && typeof tool.output === 'string' && tool.output.includes('Answer questions');
+  const isRealError = tool.is_error && !isWaitingForInput;
+  const isPending = !hasOutput || isWaitingForInput;
 
   const questions = useMemo(() => {
     const inputObj = tool.input as AskUserQuestionInput | undefined;
     return inputObj?.questions ?? [];
   }, [tool.input]);
+
+  // Handle clicking an option
+  const handleOptionClick = (questionIndex: number, optionIndex: number, multiSelect: boolean) => {
+    if (!isPending || isClaudeRunning || !onSendResponse) return;
+
+    const question = questions[questionIndex];
+    if (!question) return;
+
+    if (multiSelect) {
+      // Toggle selection for multi-select
+      setSelectedOptions((prev) => {
+        const newMap = new Map(prev);
+        const currentSet = newMap.get(questionIndex) ?? new Set();
+        const newSet = new Set(currentSet);
+        if (newSet.has(optionIndex)) {
+          newSet.delete(optionIndex);
+        } else {
+          newSet.add(optionIndex);
+        }
+        newMap.set(questionIndex, newSet);
+        return newMap;
+      });
+    } else {
+      // For single select, immediately send the response
+      const option = question.options[optionIndex];
+      if (option) {
+        onSendResponse(option.label);
+      }
+    }
+  };
+
+  // Handle submitting multi-select responses
+  const handleSubmitMultiSelect = (questionIndex: number) => {
+    if (!onSendResponse) return;
+
+    const question = questions[questionIndex];
+    const selected = selectedOptions.get(questionIndex);
+    if (!question || !selected || selected.size === 0) return;
+
+    const selectedLabels = Array.from(selected)
+      .map((idx) => question.options[idx]?.label)
+      .filter(Boolean);
+
+    onSendResponse(selectedLabels.join(', '));
+  };
+
+  // Check if an option is selected (for multi-select)
+  const isOptionSelected = (questionIndex: number, optionIndex: number) => {
+    return selectedOptions.get(questionIndex)?.has(optionIndex) ?? false;
+  };
 
   return (
     <div className="group">
@@ -110,8 +179,8 @@ export function AskUserQuestionDisplay({ tool }: { tool: ToolCall }) {
             'mt-2',
             isPending &&
               'border-purple-300 dark:border-purple-700 bg-purple-50/50 dark:bg-purple-950/30',
-            isError && 'border-red-300 dark:border-red-700',
-            !isPending && !isError && 'border-green-300 dark:border-green-700'
+            isRealError && 'border-red-300 dark:border-red-700',
+            !isPending && !isRealError && 'border-green-300 dark:border-green-700'
           )}
         >
           <CollapsibleTrigger className="w-full px-3 py-2 text-left flex items-center justify-between text-sm hover:bg-muted/50 rounded-t-xl">
@@ -126,12 +195,12 @@ export function AskUserQuestionDisplay({ tool }: { tool: ToolCall }) {
                   Waiting for input
                 </Badge>
               )}
-              {isError && (
+              {isRealError && (
                 <Badge variant="destructive" className="text-xs">
                   Error
                 </Badge>
               )}
-              {!isPending && !isError && (
+              {!isPending && !isRealError && (
                 <Badge
                   variant="outline"
                   className="text-xs border-green-500 text-green-700 dark:text-green-400"
@@ -159,37 +228,69 @@ export function AskUserQuestionDisplay({ tool }: { tool: ToolCall }) {
 
                   {/* Options */}
                   <div className="space-y-1.5 ml-1">
-                    {question.options.map((option, oIndex) => (
-                      <div
-                        key={oIndex}
-                        className={cn(
-                          'flex items-start gap-2 py-1.5 px-2 rounded text-sm',
-                          'bg-muted/50 hover:bg-muted transition-colors'
-                        )}
-                      >
-                        {question.multiSelect ? <CheckboxIcon /> : <RadioIcon />}
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-foreground">{option.label}</div>
-                          {option.description && (
-                            <div className="text-xs text-muted-foreground mt-0.5">
-                              {option.description}
-                            </div>
+                    {question.options.map((option, oIndex) => {
+                      const isSelected = isOptionSelected(qIndex, oIndex);
+                      const canClick = isPending && !isClaudeRunning && onSendResponse;
+
+                      return (
+                        <button
+                          key={oIndex}
+                          type="button"
+                          disabled={!canClick}
+                          onClick={() => handleOptionClick(qIndex, oIndex, question.multiSelect)}
+                          className={cn(
+                            'flex items-start gap-2 py-1.5 px-2 rounded text-sm w-full text-left',
+                            'transition-colors',
+                            canClick
+                              ? 'bg-muted/50 hover:bg-purple-100 dark:hover:bg-purple-900/50 cursor-pointer'
+                              : 'bg-muted/50',
+                            isSelected &&
+                              'bg-purple-100 dark:bg-purple-900/50 ring-1 ring-purple-400'
                           )}
-                        </div>
-                      </div>
-                    ))}
+                        >
+                          {question.multiSelect ? (
+                            <CheckboxIcon checked={isSelected} />
+                          ) : (
+                            <RadioIcon selected={isSelected} />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-foreground">{option.label}</div>
+                            {option.description && (
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                {option.description}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
+
+                  {/* Submit button for multi-select */}
+                  {question.multiSelect &&
+                    isPending &&
+                    !isClaudeRunning &&
+                    onSendResponse &&
+                    (selectedOptions.get(qIndex)?.size ?? 0) > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleSubmitMultiSelect(qIndex)}
+                        className="mt-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded transition-colors"
+                      >
+                        Submit Selected
+                      </button>
+                    )}
                 </div>
               ))}
 
-              {/* Show the response if answered */}
-              {hasOutput && (
+              {/* Show the response if answered (but not the "Answer questions?" error) */}
+              {hasOutput && !isWaitingForInput && (
                 <div className="pt-2 border-t">
                   <div className="text-xs text-muted-foreground mb-1">Response:</div>
                   <pre
                     className={cn(
                       'text-xs p-2 rounded overflow-x-auto',
-                      isError
+                      isRealError
                         ? 'bg-red-50 dark:bg-red-950 text-red-800 dark:text-red-200'
                         : 'bg-muted'
                     )}

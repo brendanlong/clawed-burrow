@@ -11,6 +11,7 @@ import { ClaudeStatusIndicator } from '@/components/ClaudeStatusIndicator';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { useNotification } from '@/hooks/useNotification';
 
 interface Message {
   id: string;
@@ -117,6 +118,15 @@ function SessionView({ sessionId }: { sessionId: string }) {
 
   const interruptMutation = trpc.claude.interrupt.useMutation();
   const sendMutation = trpc.claude.send.useMutation();
+
+  // Request notification permission on mount
+  const { requestPermission, permission } = useNotification();
+  useEffect(() => {
+    // Request permission if not yet decided
+    if (permission === 'default') {
+      requestPermission();
+    }
+  }, [permission, requestPermission]);
 
   // Flatten bidirectional pages into chronological order
   // Pages array structure:
@@ -279,6 +289,8 @@ function SessionView({ sessionId }: { sessionId: string }) {
         isLoading={historyLoading || isFetchingNextPage}
         hasMore={hasNextPage ?? false}
         onLoadMore={fetchNextPage}
+        onSendResponse={handleSendPrompt}
+        isClaudeRunning={isClaudeRunning}
       />
 
       <ClaudeStatusIndicator isRunning={isClaudeRunning} containerStatus={session.status} />

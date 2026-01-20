@@ -175,9 +175,18 @@ interface MessageListProps {
   isLoading: boolean;
   hasMore: boolean;
   onLoadMore: () => void;
+  onSendResponse?: (response: string) => void;
+  isClaudeRunning?: boolean;
 }
 
-export function MessageList({ messages, isLoading, hasMore, onLoadMore }: MessageListProps) {
+export function MessageList({
+  messages,
+  isLoading,
+  hasMore,
+  onLoadMore,
+  onSendResponse,
+  isClaudeRunning,
+}: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const topSentinelRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -332,6 +341,8 @@ export function MessageList({ messages, isLoading, hasMore, onLoadMore }: Messag
               latestTodoWriteId={latestTodoWriteId}
               manuallyToggledTodoIds={manuallyToggledTodoIds}
               onTodoManualToggle={handleTodoManualToggle}
+              onSendResponse={onSendResponse}
+              isClaudeRunning={isClaudeRunning}
             />
           </div>
         );
