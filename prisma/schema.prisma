@@ -58,6 +58,7 @@ model ClaudeProcess {
   execId         String   // Docker exec ID for checking completion status
   outputFile     String   // path to output file in container (relative to /workspace)
   lastSequence   Int      // last sequence number we've processed
+  pid            Int?     // PID of the Claude process in the container (for direct signal delivery)
   startedAt      DateTime @default(now())
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)

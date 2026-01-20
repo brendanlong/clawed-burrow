@@ -231,8 +231,9 @@ export async function getContainerStatus(
 export async function sendSignalToExec(
   containerId: string,
   pid: number,
-  signal: string = 'SIGINT'
+  signal: string = 'INT'
 ): Promise<void> {
+  log('sendSignalToExec', 'Sending signal to PID', { containerId, pid, signal });
   const container = docker.getContainer(containerId);
 
   const exec = await container.exec({
@@ -241,7 +242,33 @@ export async function sendSignalToExec(
     AttachStderr: true,
   });
 
-  await exec.start({ Detach: false });
+  const stream = await exec.start({ Detach: false, Tty: false });
+  stream.resume();
+  await new Promise<void>((resolve) => {
+    stream.on('end', async () => {
+      try {
+        const info = await exec.inspect();
+        log('sendSignalToExec', 'Signal sent', {
+          containerId,
+          pid,
+          signal,
+          exitCode: info.ExitCode,
+        });
+      } catch {
+        log('sendSignalToExec', 'Could not get exit code', { containerId, pid, signal });
+      }
+      resolve();
+    });
+    stream.on('error', (err) => {
+      log('sendSignalToExec', 'Error sending signal', {
+        containerId,
+        pid,
+        signal,
+        error: err.message,
+      });
+      resolve();
+    });
+  });
 }
 
 /**
@@ -260,6 +287,7 @@ export async function signalProcessesByPattern(
   pattern: string,
   signal: string = 'TERM'
 ): Promise<void> {
+  log('signalProcessesByPattern', 'Sending signal', { containerId, pattern, signal });
   const container = docker.getContainer(containerId);
 
   const exec = await container.exec({
@@ -271,8 +299,33 @@ export async function signalProcessesByPattern(
   const stream = await exec.start({ Detach: false, Tty: false });
   stream.resume(); // Consume stream so it ends
   await new Promise<void>((resolve) => {
-    stream.on('end', resolve);
-    stream.on('error', resolve);
+    stream.on('end', async () => {
+      try {
+        const info = await exec.inspect();
+        log('signalProcessesByPattern', 'Signal sent', {
+          containerId,
+          pattern,
+          signal,
+          exitCode: info.ExitCode,
+        });
+      } catch {
+        log('signalProcessesByPattern', 'Could not get exit code', {
+          containerId,
+          pattern,
+          signal,
+        });
+      }
+      resolve();
+    });
+    stream.on('error', (err) => {
+      log('signalProcessesByPattern', 'Error sending signal', {
+        containerId,
+        pattern,
+        signal,
+        error: err.message,
+      });
+      resolve();
+    });
   });
 }
 
@@ -336,11 +389,12 @@ export async function execInContainerWithOutputFile(
   const container = docker.getContainer(containerId);
 
   // Wrap the command to redirect output to a file
-  // Use sh -c to handle the redirection
+  // Use sh -c to handle the redirection, with exec to replace sh with the actual command
+  // This ensures signals (like SIGINT) go directly to the claude process, not to sh
   const wrappedCommand = [
     'sh',
     '-c',
-    `${command.map(escapeShellArg).join(' ')} > "${outputFile}" 2>&1`,
+    `exec ${command.map(escapeShellArg).join(' ')} > "${outputFile}" 2>&1`,
   ];
   log('execInContainerWithOutputFile', 'Wrapped command', { wrappedCommand });
 

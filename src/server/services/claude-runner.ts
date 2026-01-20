@@ -7,6 +7,8 @@ import {
   fileExistsInContainer,
   killProcessesByPattern,
   signalProcessesByPattern,
+  findProcessInContainer,
+  sendSignalToExec,
 } from './docker';
 import { prisma } from '@/lib/prisma';
 import { getMessageType } from '@/lib/claude-messages';
@@ -151,6 +153,19 @@ export async function runClaudeCommand(
       if (exists) break;
       await new Promise((r) => setTimeout(r, 100));
       attempts++;
+    }
+
+    // Find and store the PID of the Claude process for direct signal delivery
+    const pid = await findProcessInContainer(containerId, CLAUDE_PROCESS_PATTERN);
+    if (pid) {
+      log('runClaudeCommand', 'Found Claude process PID', { sessionId, pid });
+      runningProcesses.set(sessionId, { containerId, pid });
+      await prisma.claudeProcess.update({
+        where: { sessionId },
+        data: { pid },
+      });
+    } else {
+      log('runClaudeCommand', 'Could not find Claude process PID', { sessionId });
     }
 
     // Tail the output file for real-time streaming
@@ -612,10 +627,23 @@ async function updateLastSequence(sessionId: string, sequence: number): Promise<
 }
 
 export async function interruptClaude(sessionId: string): Promise<boolean> {
+  log('interruptClaude', 'Interrupt requested', { sessionId });
+
   // Check in-memory first
   const process = runningProcesses.get(sessionId);
   if (process) {
-    await signalProcessesByPattern(process.containerId, CLAUDE_PROCESS_PATTERN, 'INT');
+    log('interruptClaude', 'Found in-memory process', {
+      sessionId,
+      containerId: process.containerId,
+      pid: process.pid,
+    });
+    if (process.pid) {
+      // Use direct kill with PID for more reliable signal delivery
+      await sendSignalToExec(process.containerId, process.pid, 'INT');
+    } else {
+      // Fallback to pattern matching if PID not available
+      await signalProcessesByPattern(process.containerId, CLAUDE_PROCESS_PATTERN, 'INT');
+    }
     return true;
   }
 
@@ -624,11 +652,21 @@ export async function interruptClaude(sessionId: string): Promise<boolean> {
     where: { sessionId },
   });
   if (!processRecord) {
+    log('interruptClaude', 'No process found', { sessionId });
     return false;
   }
 
-  // Send SIGINT to the Claude process
-  await signalProcessesByPattern(processRecord.containerId, CLAUDE_PROCESS_PATTERN, 'INT');
+  log('interruptClaude', 'Found DB process record', {
+    sessionId,
+    containerId: processRecord.containerId,
+    pid: processRecord.pid,
+  });
+  // Send SIGINT to the Claude process - prefer direct PID if available
+  if (processRecord.pid) {
+    await sendSignalToExec(processRecord.containerId, processRecord.pid, 'INT');
+  } else {
+    await signalProcessesByPattern(processRecord.containerId, CLAUDE_PROCESS_PATTERN, 'INT');
+  }
   return true;
 }
 
