@@ -242,19 +242,21 @@ export function MessageList({
     [messages, resultMap]
   );
 
-  // Show browser notification for new pending AskUserQuestions
+  // Show browser notification for new pending AskUserQuestions (only when tab is not visible)
   useEffect(() => {
     for (const question of pendingQuestions) {
       if (!notifiedQuestionIdsRef.current.has(question.id)) {
         // Mark as notified (mutating ref doesn't cause re-render)
         notifiedQuestionIdsRef.current.add(question.id);
 
-        // Show browser notification
-        showNotification(`Claude: ${question.header}`, {
-          body: question.question,
-          tag: `ask-user-question-${question.id}`, // Prevents duplicate notifications
-          requireInteraction: true, // Keep notification visible until user interacts
-        });
+        // Only show notification if the page is not visible (user is on different tab/window minimized)
+        if (document.hidden) {
+          showNotification(`Claude: ${question.header}`, {
+            body: question.question,
+            tag: `ask-user-question-${question.id}`, // Prevents duplicate notifications
+            requireInteraction: true, // Keep notification visible until user interacts
+          });
+        }
       }
     }
   }, [pendingQuestions, showNotification]);
