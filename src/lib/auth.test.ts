@@ -81,9 +81,7 @@ describe('auth', () => {
       expect(parseAuthHeader('Bearer token extra')).toBeNull();
     });
 
-    // BUG: 'Bearer '.split(' ') = ['Bearer', ''] which has length 2, so returns ''
-    // Should return null for empty token
-    it.skip('should return null for Bearer with empty token', () => {
+    it('should return null for Bearer with empty token', () => {
       expect(parseAuthHeader('Bearer ')).toBeNull();
     });
 
