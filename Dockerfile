@@ -1,8 +1,9 @@
 FROM node:20-slim
 
-# Install dependencies for Prisma
+# Install dependencies for Prisma and git for cloning repositories
 RUN apt-get update && apt-get install -y \
     openssl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Enable corepack for pnpm
