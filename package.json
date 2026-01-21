@@ -16,6 +16,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "docker:build": "docker build -t claude-code-runner:latest -f docker/Dockerfile.claude-code docker/",
+    "postinstall": "prisma generate",
     "prepare": "husky",
     "hash-password": "tsx scripts/hash-password.ts",
     "test": "vitest",
