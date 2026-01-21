@@ -14,6 +14,7 @@ import { TodoWriteDisplay } from './TodoWriteDisplay';
 import { GlobDisplay } from './GlobDisplay';
 import { WebSearchDisplay } from './WebSearchDisplay';
 import { AskUserQuestionDisplay } from './AskUserQuestionDisplay';
+import { TaskDisplay } from './TaskDisplay';
 import { ToolCallDisplay } from './ToolCallDisplay';
 import { ToolResultDisplay } from './ToolResultDisplay';
 import { SystemInitDisplay } from './SystemInitDisplay';
@@ -136,6 +137,10 @@ function renderContentBlocks(
                   isClaudeRunning={askUserQuestionProps?.isClaudeRunning}
                 />
               );
+            }
+
+            if (block.name === 'Task') {
+              return <TaskDisplay key={block.id} tool={tool} />;
             }
 
             return <ToolCallDisplay key={block.id} tool={tool} />;

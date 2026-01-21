@@ -15,6 +15,7 @@ export { ResultDisplay } from './ResultDisplay';
 export { HookResponseDisplay } from './HookResponseDisplay';
 export { WebSearchDisplay } from './WebSearchDisplay';
 export { AskUserQuestionDisplay } from './AskUserQuestionDisplay';
+export { TaskDisplay } from './TaskDisplay';
 
 export type { ToolResultMap, ToolCall, ContentBlock, MessageContent, TodoItem } from './types';
 export { formatAsJson } from './types';
