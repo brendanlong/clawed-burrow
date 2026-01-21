@@ -123,7 +123,8 @@ function getOutputFileName(sessionId: string): string {
 }
 
 function getOutputFilePath(sessionId: string): string {
-  return `/workspace/${getOutputFileName(sessionId)}`;
+  // Put output file in /tmp to avoid cluttering the workspace with untracked files
+  return `/tmp/${getOutputFileName(sessionId)}`;
 }
 
 export async function runClaudeCommand(
