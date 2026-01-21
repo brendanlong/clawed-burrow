@@ -1,6 +1,8 @@
 services:
   app:
     image: ghcr.io/brendanlong/clawed-burrow:latest
+    labels:
+      - com.centurylinklabs.watchtower.scope=clawed-burrow
     ports:
       - '3000:3000'
     environment:
@@ -25,16 +27,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${HOME}/.claude:/claude-auth
     restart: unless-stopped
-    depends_on:
-      - migrate
-
-  migrate:
-    image: ghcr.io/brendanlong/clawed-burrow:latest
-    command: npx prisma migrate deploy
-    environment:
-      - DATABASE_URL=file:/data/db/prod.db
-    volumes:
-      - ${HOME}/.clawed-burrow:/data
 
   # Watchtower - automatically updates containers when new images are pushed
   watchtower:

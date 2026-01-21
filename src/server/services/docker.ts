@@ -26,28 +26,23 @@ function toHostPath(containerPath: string): string {
   return containerPath;
 }
 
-// Track which images we've already pulled in this process lifetime
-const pulledImages = new Set<string>();
+// Track last pull time per image to avoid pulling too frequently
+const lastPullTime = new Map<string, number>();
+const PULL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes (matches Watchtower poll interval)
 
 /**
- * Ensure a Docker image is available locally, pulling it if necessary.
- * Uses an in-memory cache to avoid redundant pull attempts within the same process.
+ * Ensure a Docker image is up-to-date by pulling it.
+ * Pulls are rate-limited to once per 5 minutes per image to avoid excessive API calls.
+ * Docker pull is fast when the image is already current (just a manifest check).
  */
 async function ensureImagePulled(imageName: string): Promise<void> {
-  // Skip if we've already pulled this image in this process
-  if (pulledImages.has(imageName)) {
-    return;
-  }
+  const lastPull = lastPullTime.get(imageName);
+  const now = Date.now();
 
-  // Check if image exists locally
-  try {
-    const image = docker.getImage(imageName);
-    await image.inspect();
-    log.debug('Image already exists locally', { imageName });
-    pulledImages.add(imageName);
+  // Skip if we've pulled recently
+  if (lastPull && now - lastPull < PULL_INTERVAL_MS) {
+    log.debug('Skipping pull, recently pulled', { imageName, msAgo: now - lastPull });
     return;
-  } catch {
-    // Image doesn't exist, need to pull it
   }
 
   log.info('Pulling image', { imageName });
@@ -69,7 +64,7 @@ async function ensureImagePulled(imageName: string): Promise<void> {
             reject(pullErr);
           } else {
             log.info('Image pull complete', { imageName });
-            pulledImages.add(imageName);
+            lastPullTime.set(imageName, Date.now());
             resolve();
           }
         },

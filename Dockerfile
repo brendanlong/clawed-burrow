@@ -33,5 +33,5 @@ RUN mkdir -p /data/db /data/repos /data/worktrees
 # Expose port
 EXPOSE 3000
 
-# Start the application
-CMD ["pnpm", "start"]
+# Start the application (run migrations first, then start)
+CMD ["sh", "-c", "npx prisma migrate deploy && pnpm start"]
