@@ -9,6 +9,68 @@ const log = createLogger('docker');
 // Use env variable if set, otherwise default to local build
 const CLAUDE_CODE_IMAGE = env.CLAUDE_RUNNER_IMAGE;
 
+// Track which images we've already pulled in this process lifetime
+const pulledImages = new Set<string>();
+
+/**
+ * Ensure a Docker image is available locally, pulling it if necessary.
+ * Uses an in-memory cache to avoid redundant pull attempts within the same process.
+ */
+async function ensureImagePulled(imageName: string): Promise<void> {
+  // Skip if we've already pulled this image in this process
+  if (pulledImages.has(imageName)) {
+    return;
+  }
+
+  // Check if image exists locally
+  try {
+    const image = docker.getImage(imageName);
+    await image.inspect();
+    log.debug('Image already exists locally', { imageName });
+    pulledImages.add(imageName);
+    return;
+  } catch {
+    // Image doesn't exist, need to pull it
+  }
+
+  log.info('Pulling image', { imageName });
+
+  return new Promise((resolve, reject) => {
+    docker.pull(imageName, (err: Error | null, stream: NodeJS.ReadableStream) => {
+      if (err) {
+        log.error('Failed to pull image', err, { imageName });
+        reject(err);
+        return;
+      }
+
+      // Follow the pull progress and wait for completion
+      docker.modem.followProgress(
+        stream,
+        (pullErr: Error | null) => {
+          if (pullErr) {
+            log.error('Image pull failed', pullErr, { imageName });
+            reject(pullErr);
+          } else {
+            log.info('Image pull complete', { imageName });
+            pulledImages.add(imageName);
+            resolve();
+          }
+        },
+        (event: { status?: string; progress?: string }) => {
+          // Log progress periodically
+          if (event.status && event.progress) {
+            log.debug('Pull progress', {
+              imageName,
+              status: event.status,
+              progress: event.progress,
+            });
+          }
+        }
+      );
+    });
+  });
+}
+
 export interface ContainerConfig {
   sessionId: string;
   workspacePath: string;
@@ -78,6 +140,9 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
       image: CLAUDE_CODE_IMAGE,
       binds,
     });
+
+    // Ensure the image is pulled before creating the container
+    await ensureImagePulled(CLAUDE_CODE_IMAGE);
 
     const container = await docker.createContainer({
       Image: CLAUDE_CODE_IMAGE,
