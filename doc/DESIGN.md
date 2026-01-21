@@ -249,6 +249,14 @@ The system prompt instructs Claude to:
 
 This ensures users can see all changes through GitHub, which is their only way to access the codebase.
 
+#### Container Issue Reporting
+
+The system prompt also instructs Claude to report container issues (missing tools, misconfigured environments) to the clawed-burrow repository. Before creating an issue, Claude should:
+
+1. Search existing issues to avoid duplicates: `gh issue list --repo brendanlong/clawed-burrow --search "<issue>" --state all`
+2. If no matching issue exists, create one with labels `bug` and `reported-by-claude`
+3. Continue with workarounds if possible, or inform the user if the task cannot be completed
+
 ### Interruption Flow
 
 1. User clicks "Stop" in UI

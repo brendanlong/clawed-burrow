@@ -43,7 +43,13 @@ const SYSTEM_PROMPT = `IMPORTANT: The user is accessing this session remotely th
 3. If you're working on a new branch or the changes would benefit from review, open a Pull Request using the GitHub CLI (gh pr create)
 4. If a PR already exists for the current branch, just push to update it
 
-Never leave uncommitted or unpushed changes - the user cannot see them otherwise.`;
+Never leave uncommitted or unpushed changes - the user cannot see them otherwise.
+
+CONTAINER ISSUE REPORTING: This container should have all standard development tools pre-installed and properly configured. If you encounter missing tools, misconfigured environments, or other container setup issues that prevent you from completing tasks:
+
+1. First, check if the issue has already been reported by searching existing issues: \`gh issue list --repo brendanlong/clawed-burrow --search "<issue description>" --state all\`
+2. If no existing issue matches, report it to the clawed-burrow repository: \`gh issue create --repo brendanlong/clawed-burrow --title "<brief description>" --body "<detailed description of the problem and what you were trying to do>" --label bug --label reported-by-claude\`
+3. Then continue with your task using workarounds if possible, or inform the user that the task cannot be completed due to the container issue.`;
 
 const log = createLogger('claude-runner');
 
