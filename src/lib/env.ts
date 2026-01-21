@@ -24,6 +24,10 @@ const envSchema = z.object({
   // pnpm's store is safe for concurrent access (atomic operations)
   // Example: /home/user/.local/share/pnpm/store
   PNPM_STORE_PATH: z.string().optional(),
+  // Optional path to host Gradle user home for sharing caches across sessions
+  // Gradle's cache is safe for concurrent access (file locking)
+  // Example: /home/user/.gradle
+  GRADLE_USER_HOME: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

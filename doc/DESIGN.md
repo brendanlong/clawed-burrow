@@ -474,6 +474,13 @@ ORDER BY sequence ASC;
 - pnpm's store is safe for concurrent access (atomic operations)
 - Only `pnpm store prune` should not run while installs are in progress
 
+### Shared Gradle Cache
+
+- Set `GRADLE_USER_HOME` to the host's Gradle user home (e.g., `/home/user/.gradle`)
+- The cache is mounted at `/gradle-cache` in containers and `GRADLE_USER_HOME` env var is set
+- Gradle's cache is safe for concurrent access (uses file locking)
+- Includes downloaded dependencies, wrapper distributions, and build caches
+
 ## UI Screens
 
 ### Session List (Home)

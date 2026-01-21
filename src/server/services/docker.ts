@@ -48,6 +48,10 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     if (config.githubToken) {
       envVars.push(`GITHUB_TOKEN=${config.githubToken}`);
     }
+    // Set Gradle user home if shared cache is configured
+    if (env.GRADLE_USER_HOME) {
+      envVars.push('GRADLE_USER_HOME=/gradle-cache');
+    }
 
     // Build volume binds
     const binds = [
@@ -60,6 +64,12 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     // pnpm's store is safe for concurrent access (atomic operations)
     if (env.PNPM_STORE_PATH) {
       binds.push(`${env.PNPM_STORE_PATH}:/pnpm-store`);
+    }
+
+    // Mount shared Gradle cache if configured
+    // Gradle's cache is safe for concurrent access (file locking)
+    if (env.GRADLE_USER_HOME) {
+      binds.push(`${env.GRADLE_USER_HOME}:/gradle-cache`);
     }
 
     log.info('Creating new container', {
