@@ -6,7 +6,9 @@ services:
     environment:
       - DATABASE_URL=file:/data/db/prod.db
       - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - CLAUDE_AUTH_PATH=/claude-auth
+      # Host path to Claude auth directory - used for bind mounts in session containers
+      # Must be an absolute path on the Docker host (not inside this container)
+      - CLAUDE_AUTH_PATH=${CLAUDE_AUTH_PATH:-${HOME}/.claude}
       - DATA_DIR=/data
       - NODE_ENV=production
       - PASSWORD_HASH=${PASSWORD_HASH}
@@ -19,7 +21,8 @@ services:
     volumes:
       - app-data:/data
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${CLAUDE_AUTH_PATH:-~/.claude}:/claude-auth:ro
+      # Mount claude auth so app can verify it exists (the actual path is passed via CLAUDE_AUTH_PATH env var)
+      - ${CLAUDE_AUTH_PATH:-${HOME}/.claude}:/claude-auth
     restart: unless-stopped
     depends_on:
       - migrate

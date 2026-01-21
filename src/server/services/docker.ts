@@ -500,6 +500,7 @@ export async function execInContainerWithOutputFile(
     AttachStdout: false,
     AttachStderr: false,
     Tty: false,
+    User: 'claudeuser',
   });
 
   // Start in detached mode
