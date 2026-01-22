@@ -22,6 +22,8 @@ services:
       - PNPM_STORE_PATH=${PNPM_STORE_PATH:-}
       # Optional: shared Gradle cache path on host (for faster builds)
       - GRADLE_USER_HOME=${GRADLE_USER_HOME:-}
+      # Optional: Claude MCP server configuration file path on host
+      - CLAUDE_MCP_CONFIG=${CLAUDE_MCP_CONFIG:-}
     volumes:
       - ${HOME}/.clawed-burrow:/data
       - /var/run/docker.sock:/var/run/docker.sock

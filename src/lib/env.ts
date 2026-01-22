@@ -34,6 +34,10 @@ const envSchema = z.object({
   // Docker image to use for Claude Code runner containers
   // Defaults to local build, but can be set to GHCR image for production
   CLAUDE_RUNNER_IMAGE: z.string().default('claude-code-runner:latest'),
+  // Optional path to Claude MCP server configuration file on host
+  // This file contains MCP server definitions (added via `claude mcp add`)
+  // Example: /home/user/.claude.json
+  CLAUDE_MCP_CONFIG: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

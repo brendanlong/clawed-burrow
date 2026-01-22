@@ -500,6 +500,13 @@ ORDER BY sequence ASC;
 - Gradle's cache is safe for concurrent access (uses file locking)
 - Includes downloaded dependencies, wrapper distributions, and build caches
 
+### MCP Server Configuration
+
+- Set `CLAUDE_MCP_CONFIG` to the host's Claude MCP configuration file (e.g., `/home/user/.claude.json`)
+- This file contains MCP server definitions added via `claude mcp add` on the host
+- The file is mounted read-only at `/home/claudeuser/.claude.json` in containers
+- Allows session containers to use the same MCP servers configured on the host
+
 ## UI Screens
 
 ### Session List (Home)

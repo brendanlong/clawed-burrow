@@ -148,6 +148,12 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
       binds.push(`${env.GRADLE_USER_HOME}:/gradle-cache`);
     }
 
+    // Mount MCP server configuration if configured
+    // This allows Claude to use MCP servers defined on the host
+    if (env.CLAUDE_MCP_CONFIG) {
+      binds.push(`${env.CLAUDE_MCP_CONFIG}:/home/claudeuser/.claude.json:ro`);
+    }
+
     log.info('Creating new container', {
       sessionId: config.sessionId,
       image: CLAUDE_CODE_IMAGE,
