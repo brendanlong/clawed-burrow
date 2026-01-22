@@ -20,6 +20,8 @@ interface Message {
   sequence: number;
 }
 
+const MESSAGE_PAGE_SIZE = 20;
+
 /**
  * Hook for managing session state: fetching session data, SSE updates, and start/stop mutations.
  */
@@ -90,10 +92,10 @@ function useSessionMessages(sessionId: string) {
     hasNextPage,
     fetchNextPage,
   } = trpc.claude.getHistory.useInfiniteQuery(
-    { sessionId, limit: 10 },
+    { sessionId, limit: MESSAGE_PAGE_SIZE },
     {
       // Limit stored pages to prevent memory growth
-      // With 10 messages per page, this keeps up to 5000 messages in memory
+      // With MESSAGE_PAGE_SIZE messages per page, this keeps up to 10000 messages in memory
       maxPages: 500,
       // Message data is immutable - never refetch automatically
       staleTime: Infinity,
@@ -150,7 +152,7 @@ function useSessionMessages(sessionId: string) {
         const newMessage = trackedData.data.message;
 
         // Add message directly to the infinite query cache
-        utils.claude.getHistory.setInfiniteData({ sessionId, limit: 10 }, (old) => {
+        utils.claude.getHistory.setInfiniteData({ sessionId, limit: MESSAGE_PAGE_SIZE }, (old) => {
           if (!old) {
             // No existing data - create initial page
             return {

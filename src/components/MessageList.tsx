@@ -222,7 +222,7 @@ export function MessageList({
       },
       {
         root: container,
-        rootMargin: '50% 0px 0px 0px',
+        rootMargin: '100% 0px 0px 0px',
         threshold: 0,
       }
     );
