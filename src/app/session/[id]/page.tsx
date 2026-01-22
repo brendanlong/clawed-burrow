@@ -301,6 +301,7 @@ function useClaudeState(sessionId: string) {
     isRunning,
     send,
     interrupt,
+    isInterrupting: interruptMutation.isPending,
   };
 }
 
@@ -326,7 +327,12 @@ function SessionView({ sessionId }: { sessionId: string }) {
   } = useSessionMessages(sessionId);
 
   // Claude state: running, send, interrupt
-  const { isRunning: isClaudeRunning, send: sendPrompt, interrupt } = useClaudeState(sessionId);
+  const {
+    isRunning: isClaudeRunning,
+    send: sendPrompt,
+    interrupt,
+    isInterrupting,
+  } = useClaudeState(sessionId);
 
   // Working indicator: page title and favicon
   useWorkingIndicator(session?.name, isClaudeRunning);
@@ -462,6 +468,7 @@ function SessionView({ sessionId }: { sessionId: string }) {
         onSubmit={handleSendPrompt}
         onInterrupt={interrupt}
         isRunning={isClaudeRunning}
+        isInterrupting={isInterrupting}
         disabled={session.status !== 'running'}
       />
     </div>

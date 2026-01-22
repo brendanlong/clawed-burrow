@@ -8,10 +8,17 @@ interface PromptInputProps {
   onSubmit: (prompt: string) => void;
   onInterrupt: () => void;
   isRunning: boolean;
+  isInterrupting: boolean;
   disabled: boolean;
 }
 
-export function PromptInput({ onSubmit, onInterrupt, isRunning, disabled }: PromptInputProps) {
+export function PromptInput({
+  onSubmit,
+  onInterrupt,
+  isRunning,
+  isInterrupting,
+  disabled,
+}: PromptInputProps) {
   const [prompt, setPrompt] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -60,8 +67,13 @@ export function PromptInput({ onSubmit, onInterrupt, isRunning, disabled }: Prom
         </div>
 
         {isRunning ? (
-          <Button type="button" variant="destructive" onClick={onInterrupt}>
-            Stop
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={onInterrupt}
+            disabled={isInterrupting}
+          >
+            {isInterrupting ? 'Stopping...' : 'Stop'}
           </Button>
         ) : (
           <Button type="submit" disabled={!prompt.trim() || disabled}>
