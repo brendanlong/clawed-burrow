@@ -347,47 +347,65 @@ CMD ["tail", "-f", "/dev/null"]
 
 ### Container Launch
 
-The application uses the `dockerode` library to communicate with Podman via its Docker-compatible API socket.
+The application uses Podman CLI commands to manage containers, routing them through the Docker-compatible socket via `CONTAINER_HOST` env var.
 
 ```typescript
 async function startSessionContainer(session: Session, githubToken?: string): Promise<string> {
-  const binds = [
+  const volumeArgs = [
+    '-v',
     `${session.workspacePath}:/workspace`,
-    `${PODMAN_SOCKET}:/var/run/docker.sock`, // Podman socket for container-in-container
+    '-v',
     `${CLAUDE_AUTH_PATH}:/home/claudeuser/.claude`,
   ];
 
   // Mount shared pnpm store if configured (safe for concurrent access)
   if (PNPM_STORE_PATH) {
-    binds.push(`${PNPM_STORE_PATH}:/pnpm-store`);
+    volumeArgs.push('-v', `${PNPM_STORE_PATH}:/pnpm-store`);
   }
 
-  // Environment variables for GPU access (works with nvidia-container-toolkit)
-  const envVars = ['NVIDIA_VISIBLE_DEVICES=all', 'NVIDIA_DRIVER_CAPABILITIES=all'];
+  // Mount host's podman socket for container-in-container support
+  if (PODMAN_SOCKET_PATH) {
+    volumeArgs.push('-v', `${PODMAN_SOCKET_PATH}:/var/run/docker.sock`);
+  }
+
+  // Environment variables
+  const envArgs = ['-e', 'NVIDIA_VISIBLE_DEVICES=all', '-e', 'NVIDIA_DRIVER_CAPABILITIES=all'];
   if (githubToken) {
-    envVars.push(`GITHUB_TOKEN=${githubToken}`);
+    envArgs.push('-e', `GITHUB_TOKEN=${githubToken}`);
+  }
+  // Set CONTAINER_HOST so podman/docker commands inside the container use the host's socket
+  if (PODMAN_SOCKET_PATH) {
+    envArgs.push('-e', 'CONTAINER_HOST=unix:///var/run/docker.sock');
   }
 
-  const container = await docker.createContainer({
-    Image: 'claude-code-runner:latest',
-    name: `claude-session-${session.id}`,
-    Env: envVars,
-    HostConfig: {
-      Binds: binds,
-      // GPU access via CDI (Container Device Interface)
-      Devices: [{ PathOnHost: 'nvidia.com/gpu=all', PathInContainer: '', CgroupPermissions: '' }],
-      SecurityOpt: ['label=disable'], // Required for CDI
-    },
-    WorkingDir: '/workspace',
-  });
+  // Create container with CDI for GPU access
+  const createArgs = [
+    'create',
+    '--name',
+    `claude-session-${session.id}`,
+    '--userns=keep-id',
+    '--security-opt',
+    'label=disable',
+    '--device',
+    'nvidia.com/gpu=all',
+    '-w',
+    '/workspace',
+    ...envArgs,
+    ...volumeArgs,
+    'claude-code-runner:latest',
+    'tail',
+    '-f',
+    '/dev/null',
+  ];
 
-  await container.start();
+  const containerId = await runPodman(createArgs);
+  await runPodman(['start', containerId]);
 
   // Configure git credential helper and pnpm store
-  if (githubToken) await configureGitCredentials(container.id);
-  if (PNPM_STORE_PATH) await configurePnpmStore(container.id);
+  if (githubToken) await configureGitCredentials(containerId);
+  if (PNPM_STORE_PATH) await configurePnpmStore(containerId);
 
-  return container.id;
+  return containerId;
 }
 ```
 
@@ -485,6 +503,14 @@ ORDER BY sequence ASC;
 - The cache is mounted at `/gradle-cache` in containers and `GRADLE_USER_HOME` env var is set
 - Gradle's cache is safe for concurrent access (uses file locking)
 - Includes downloaded dependencies, wrapper distributions, and build caches
+
+### Podman Socket (Container-in-Container)
+
+- Set `PODMAN_SOCKET_PATH` to the host's Podman socket path (e.g., `/run/user/1000/podman/podman.sock`)
+- The socket is mounted at `/var/run/docker.sock` in runner containers
+- `CONTAINER_HOST=unix:///var/run/docker.sock` is set in runner containers so `podman`/`docker` commands use the host's Podman
+- This enables Claude Code agents to build and run containers inside their sessions
+- Without this, agents would need to use nested Podman which has UID/GID mapping limitations
 
 ## UI Screens
 

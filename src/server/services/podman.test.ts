@@ -154,6 +154,11 @@ describe('podman service', () => {
       expect(createCall![1]).toContain('--userns=keep-id');
       expect(createCall![1]).toContain('--name');
       expect(createCall![1]).toContain('claude-session-test-session');
+
+      // When PODMAN_SOCKET_PATH is not set, should NOT include socket mount or CONTAINER_HOST env
+      const createArgs = createCall![1] as string[];
+      expect(createArgs).not.toContain('CONTAINER_HOST=unix:///var/run/docker.sock');
+      expect(createArgs.join(' ')).not.toContain('/var/run/docker.sock');
     });
 
     it('should return existing container ID if already running', async () => {

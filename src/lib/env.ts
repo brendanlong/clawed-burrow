@@ -34,6 +34,10 @@ const envSchema = z.object({
   // Docker image to use for Claude Code runner containers
   // Defaults to local build, but can be set to GHCR image for production
   CLAUDE_RUNNER_IMAGE: z.string().default('claude-code-runner:latest'),
+  // Path to the host's Podman socket for container-in-container support
+  // This socket is mounted into runner containers so Claude Code can run podman/docker commands
+  // Example: /run/user/1000/podman/podman.sock
+  PODMAN_SOCKET_PATH: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

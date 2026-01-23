@@ -185,6 +185,10 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     // Add NVIDIA environment variables for GPU access
     envArgs.push('-e', 'NVIDIA_VISIBLE_DEVICES=all');
     envArgs.push('-e', 'NVIDIA_DRIVER_CAPABILITIES=all');
+    // Set CONTAINER_HOST so podman/docker commands inside the container use the host's socket
+    if (env.PODMAN_SOCKET_PATH) {
+      envArgs.push('-e', 'CONTAINER_HOST=unix:///var/run/docker.sock');
+    }
 
     // Build volume binds
     // Use toHostPath() to convert container paths to host paths for container-in-container
@@ -203,6 +207,11 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     // Mount shared Gradle cache if configured
     if (env.GRADLE_USER_HOME) {
       volumeArgs.push('-v', `${env.GRADLE_USER_HOME}:/gradle-cache`);
+    }
+
+    // Mount host's podman socket for container-in-container support
+    if (env.PODMAN_SOCKET_PATH) {
+      volumeArgs.push('-v', `${env.PODMAN_SOCKET_PATH}:/var/run/docker.sock`);
     }
 
     log.info('Creating new container', {
