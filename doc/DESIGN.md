@@ -529,7 +529,22 @@ ORDER BY sequence ASC;
 - The socket is mounted at `/var/run/docker.sock` in runner containers
 - `CONTAINER_HOST=unix:///var/run/docker.sock` is set in runner containers so `podman`/`docker` commands use the host's Podman
 - This enables Claude Code agents to build and run containers inside their sessions
-- Without this, agents would need to use nested Podman which has UID/GID mapping limitations
+
+**Why this is required:**
+
+Rootless Podman-in-Podman with nested user namespaces does not work. When a container is already running in a user namespace (which is the case with rootless Podman), attempting to create another user namespace inside fails with errors like:
+
+```
+newuidmap: write to uid_map failed: Operation not permitted
+```
+
+or:
+
+```
+potentially insufficient UIDs or GIDs available in user namespace
+```
+
+The solution is to mount the host's Podman socket into runner containers, allowing `podman` commands inside the container to communicate with the host's Podman daemon instead of trying to run nested containers. The runner container image (`Dockerfile.claude-code`) automatically detects when `/var/run/docker.sock` is available and sets `CONTAINER_HOST` accordingly.
 
 ## UI Screens
 

@@ -134,6 +134,8 @@ RUN git config --global user.email "claude@anthropic.com" && \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Configure podman for rootless operation with fuse-overlayfs
+# NOTE: This is a fallback configuration. In container-in-container setups,
+# Podman should use the host's socket instead (see profile.d script below).
 RUN mkdir -p /home/claudeuser/.config/containers && \
     echo '[storage]' > /home/claudeuser/.config/containers/storage.conf && \
     echo 'driver = "overlay"' >> /home/claudeuser/.config/containers/storage.conf && \
@@ -143,6 +145,28 @@ RUN mkdir -p /home/claudeuser/.config/containers && \
 # Configure podman to use Docker Hub for unqualified image names
 # This allows short names like 'postgres:16' to resolve to 'docker.io/library/postgres:16'
 RUN echo 'unqualified-search-registries = ["docker.io"]' > /home/claudeuser/.config/containers/registries.conf
+
+# Configure CONTAINER_HOST to use the host's Docker/Podman socket when available
+# This is critical for Podman-in-Podman setups where nested user namespaces don't work.
+# When the host socket is mounted at /var/run/docker.sock, podman commands will use
+# the host's container runtime instead of trying to run nested containers.
+# This script runs for login shells (via /etc/profile.d)
+USER root
+RUN echo '#!/bin/sh' > /etc/profile.d/container-host.sh && \
+    echo '# Auto-detect host Docker/Podman socket for container-in-container support' >> /etc/profile.d/container-host.sh && \
+    echo '# Podman-in-Podman with nested user namespaces fails, so use host socket instead' >> /etc/profile.d/container-host.sh && \
+    echo 'if [ -S /var/run/docker.sock ] && [ -z "$CONTAINER_HOST" ]; then' >> /etc/profile.d/container-host.sh && \
+    echo '    export CONTAINER_HOST="unix:///var/run/docker.sock"' >> /etc/profile.d/container-host.sh && \
+    echo 'fi' >> /etc/profile.d/container-host.sh && \
+    chmod +x /etc/profile.d/container-host.sh
+
+# Also add to bashrc for non-login shells (e.g., when running commands via docker exec)
+USER claudeuser
+RUN echo '' >> /home/claudeuser/.bashrc && \
+    echo '# Auto-detect host Docker/Podman socket for container-in-container support' >> /home/claudeuser/.bashrc && \
+    echo 'if [ -S /var/run/docker.sock ] && [ -z "$CONTAINER_HOST" ]; then' >> /home/claudeuser/.bashrc && \
+    echo '    export CONTAINER_HOST="unix:///var/run/docker.sock"' >> /home/claudeuser/.bashrc && \
+    echo 'fi' >> /home/claudeuser/.bashrc
 
 # Entry point that keeps container alive
 CMD ["tail", "-f", "/dev/null"]
