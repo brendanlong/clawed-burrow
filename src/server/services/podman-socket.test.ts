@@ -8,6 +8,11 @@ vi.mock('child_process', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
 }));
 
+// Mock fs.existsSync to simulate docker socket existing
+vi.mock('fs', () => ({
+  existsSync: (path: string) => path === '/var/run/docker.sock',
+}));
+
 // Mock the env module WITH PODMAN_SOCKET_PATH set
 vi.mock('@/lib/env', () => ({
   env: {

@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import { Readable, PassThrough } from 'stream';
+import { existsSync } from 'fs';
 import { env } from '@/lib/env';
 import { createLogger, toError } from '@/lib/logger';
 import { v4 as uuid } from 'uuid';
@@ -42,14 +43,15 @@ const trackedProcesses = new Map<string, TrackedProcess>();
 
 /**
  * Environment for podman commands.
- * Sets CONTAINER_HOST to use the Docker socket, which connects to the host's Podman.
- * This is necessary for container-in-container setups where the inner Podman
- * has limited UID/GID mappings.
+ * In container-in-container setups, sets CONTAINER_HOST to use the Docker socket
+ * mounted from the host. This is necessary because the inner Podman has limited
+ * UID/GID mappings. In local dev, we don't set CONTAINER_HOST so podman uses
+ * its default socket.
  */
-const podmanEnv = {
-  ...process.env,
-  CONTAINER_HOST: 'unix:///var/run/docker.sock',
-};
+const DOCKER_SOCKET_PATH = '/var/run/docker.sock';
+const podmanEnv: NodeJS.ProcessEnv = existsSync(DOCKER_SOCKET_PATH)
+  ? { ...process.env, CONTAINER_HOST: `unix://${DOCKER_SOCKET_PATH}` }
+  : { ...process.env };
 
 /**
  * Run a podman command and return a promise that resolves with stdout.
