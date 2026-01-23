@@ -42,6 +42,14 @@ interface TrackedProcess {
 const trackedProcesses = new Map<string, TrackedProcess>();
 
 /**
+ * Check if we're running inside a container.
+ * Podman creates /run/.containerenv, Docker creates /.dockerenv.
+ */
+function isRunningInContainer(): boolean {
+  return existsSync('/run/.containerenv') || existsSync('/.dockerenv');
+}
+
+/**
  * Environment for podman commands.
  * In container-in-container setups, sets CONTAINER_HOST to use the Docker socket
  * mounted from the host. This is necessary because the inner Podman has limited
@@ -49,7 +57,7 @@ const trackedProcesses = new Map<string, TrackedProcess>();
  * its default socket.
  */
 const DOCKER_SOCKET_PATH = '/var/run/docker.sock';
-const podmanEnv: NodeJS.ProcessEnv = existsSync(DOCKER_SOCKET_PATH)
+const podmanEnv: NodeJS.ProcessEnv = isRunningInContainer()
   ? { ...process.env, CONTAINER_HOST: `unix://${DOCKER_SOCKET_PATH}` }
   : { ...process.env };
 
