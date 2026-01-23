@@ -15,7 +15,7 @@ const mockStopContainer = vi.hoisted(() => vi.fn());
 const mockRemoveContainer = vi.hoisted(() => vi.fn());
 const mockGetContainerStatus = vi.hoisted(() => vi.fn());
 
-vi.mock('../services/docker', () => ({
+vi.mock('../services/podman', () => ({
   createAndStartContainer: mockCreateAndStartContainer,
   stopContainer: mockStopContainer,
   removeContainer: mockRemoveContainer,
