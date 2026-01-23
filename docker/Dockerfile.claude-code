@@ -140,5 +140,9 @@ RUN mkdir -p /home/claudeuser/.config/containers && \
     echo '[storage.options.overlay]' >> /home/claudeuser/.config/containers/storage.conf && \
     echo 'mount_program = "/usr/bin/fuse-overlayfs"' >> /home/claudeuser/.config/containers/storage.conf
 
+# Configure podman to use Docker Hub for unqualified image names
+# This allows short names like 'postgres:16' to resolve to 'docker.io/library/postgres:16'
+RUN echo 'unqualified-search-registries = ["docker.io"]' > /home/claudeuser/.config/containers/registries.conf
+
 # Entry point that keeps container alive
 CMD ["tail", "-f", "/dev/null"]
