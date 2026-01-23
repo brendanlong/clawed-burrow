@@ -497,48 +497,6 @@ export async function isProcessRunning(containerId: string, processName: string)
   const pid = await findProcessInContainer(containerId, processName);
   return pid !== null;
 }
-
-/**
- * Execute a command in the background that writes output to a file.
- * Returns a unique exec ID which can be used with getExecStatus() to check completion.
- *
- * @deprecated Use execInContainerWithTee instead for better error visibility
- */
-export async function execInContainerWithOutputFile(
-  containerId: string,
-  command: string[],
-  outputFile: string
-): Promise<{ execId: string }> {
-  log.debug('execInContainerWithOutputFile: Starting', { containerId, command, outputFile });
-
-  const execId = uuid();
-
-  // Wrap the command to redirect output to a file
-  const wrappedCommand = `exec ${command.map(escapeShellArg).join(' ')} > "${outputFile}" 2>&1`;
-
-  const proc = spawn('podman', ['exec', '-d', containerId, 'sh', '-c', wrappedCommand], {
-    env: podmanEnv,
-  });
-
-  // Track the process
-  const tracked: TrackedProcess = { process: proc, running: true, exitCode: null };
-  trackedProcesses.set(execId, tracked);
-
-  proc.on('close', (code) => {
-    tracked.running = false;
-    tracked.exitCode = code;
-  });
-
-  // Wait for the exec to actually start
-  await new Promise<void>((resolve) => {
-    proc.on('spawn', resolve);
-    proc.on('error', resolve);
-  });
-
-  log.debug('execInContainerWithOutputFile: Started', { execId });
-  return { execId };
-}
-
 /**
  * Execute a command in attached mode, streaming output while also writing to a file for recovery.
  * Uses `tee` to write to both stdout (which we capture) and a file (for crash recovery).
@@ -644,22 +602,6 @@ export async function tailFileInContainer(
  */
 export async function readFileInContainer(containerId: string, filePath: string): Promise<string> {
   return runPodman(['exec', containerId, 'cat', filePath]);
-}
-
-/**
- * Count lines in a file in a container
- */
-export async function countLinesInContainer(
-  containerId: string,
-  filePath: string
-): Promise<number> {
-  try {
-    const output = await runPodman(['exec', containerId, 'wc', '-l', filePath]);
-    const lineCount = parseInt(output.trim().split(/\s+/)[0], 10);
-    return isNaN(lineCount) ? 0 : lineCount;
-  } catch {
-    return 0;
-  }
 }
 
 /**

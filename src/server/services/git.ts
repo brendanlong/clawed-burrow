@@ -1,15 +1,7 @@
 import simpleGit from 'simple-git';
 import { mkdir, rm, access } from 'fs/promises';
 import { join } from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { env } from '@/lib/env';
-
-const execAsync = promisify(exec);
-
-// UID/GID for claudeuser in session containers
-const CLAUDEUSER_UID = 1000;
-const CLAUDEUSER_GID = 1000;
 
 const WORKSPACES_DIR = join(env.DATA_DIR, 'workspaces');
 
@@ -72,10 +64,6 @@ export async function cloneRepo(
   // Create and check out a session-specific branch to avoid working directly on main/master
   const sessionBranch = `${env.SESSION_BRANCH_PREFIX}${sessionId}`;
   await repoGit.checkoutLocalBranch(sessionBranch);
-
-  // Chown the entire workspace to claudeuser (UID 1000) so the session container can write to it
-  // This is needed because the app container runs as root but session containers run as claudeuser
-  await execAsync(`chown -R ${CLAUDEUSER_UID}:${CLAUDEUSER_GID} "${workspacePath}"`);
 
   return { workspacePath, repoPath: repoName };
 }

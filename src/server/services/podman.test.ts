@@ -87,7 +87,6 @@ import {
   killProcessesByPattern,
   readFileInContainer,
   fileExistsInContainer,
-  countLinesInContainer,
   tailFileInContainer,
 } from './podman';
 
@@ -566,40 +565,6 @@ describe('podman service', () => {
       const exists = await fileExistsInContainer('test-container', '/tmp/nonexistent.txt');
 
       expect(exists).toBe(false);
-    });
-  });
-
-  describe('countLinesInContainer', () => {
-    it('should return line count', async () => {
-      mockSpawn.mockImplementation(() => {
-        const proc = createMockProcess();
-        process.nextTick(() => {
-          proc.stdout.emit('data', Buffer.from('42 /tmp/test.txt\n'));
-          proc.emit('close', 0);
-        });
-        return proc;
-      });
-
-      const count = await countLinesInContainer('test-container', '/tmp/test.txt');
-
-      expect(count).toBe(42);
-      expect(mockSpawn).toHaveBeenCalledWith(
-        'podman',
-        ['exec', 'test-container', 'wc', '-l', '/tmp/test.txt'],
-        podmanEnvMatcher
-      );
-    });
-
-    it('should return 0 on error', async () => {
-      mockSpawn.mockImplementation(() => {
-        const proc = createMockProcess();
-        process.nextTick(() => proc.emit('close', 1));
-        return proc;
-      });
-
-      const count = await countLinesInContainer('test-container', '/tmp/test.txt');
-
-      expect(count).toBe(0);
     });
   });
 
