@@ -98,34 +98,149 @@ Visit `http://localhost:3000` to access the application.
 
 ## Production Deployment
 
-### Using Podman Compose
+### Building Images Locally
+
+If you want to build the images yourself instead of using the pre-built images from GitHub Container Registry:
 
 ```bash
-# Set environment variables
-export GITHUB_TOKEN=your_github_token
-export PASSWORD_HASH="your_base64_hash"
+# Build the main app (from root Dockerfile)
+podman build -t ghcr.io/brendanlong/clawed-burrow:latest -f Dockerfile .
 
-# Enable the Podman socket (required for container management)
+# Build the Claude runner (from docker/Dockerfile.claude-code)
+podman build -t ghcr.io/brendanlong/clawed-burrow-runner:latest -f docker/Dockerfile.claude-code .
+```
+
+### Running with Podman
+
+First, enable the Podman socket (required for container management):
+
+```bash
 systemctl --user enable --now podman.socket
+```
 
-# Start services
-cd docker
-podman-compose up -d
+Create the data directory:
+
+```bash
+mkdir -p ~/.clawed-burrow
+```
+
+Run the container:
+
+```bash
+podman run -d \
+  --name clawed-burrow \
+  --label io.containers.autoupdate=registry \
+  -p 3000:3000 \
+  -e DATABASE_URL=file:/data/db/prod.db \
+  -e GITHUB_TOKEN="$GITHUB_TOKEN" \
+  -e CLAUDE_AUTH_PATH="$HOME/.claude" \
+  -e DATA_DIR=/data \
+  -e DATA_HOST_PATH="$HOME/.clawed-burrow" \
+  -e NODE_ENV=production \
+  -e PASSWORD_HASH="$PASSWORD_HASH" \
+  -e CLAUDE_RUNNER_IMAGE=ghcr.io/brendanlong/clawed-burrow-runner:latest \
+  ${PNPM_STORE_PATH:+-e PNPM_STORE_PATH="$PNPM_STORE_PATH"} \
+  ${GRADLE_USER_HOME:+-e GRADLE_USER_HOME="$GRADLE_USER_HOME"} \
+  -v "$HOME/.clawed-burrow:/data" \
+  -v "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock:/var/run/docker.sock" \
+  -v "$HOME/.claude:/claude-auth" \
+  --device nvidia.com/gpu=all \
+  --security-opt label=disable \
+  --restart always \
+  ghcr.io/brendanlong/clawed-burrow:latest
+```
+
+### Installing as a systemd Service
+
+For automatic startup and management, install as a user systemd service:
+
+1. **Generate the systemd unit file** (after the container is running):
+
+   ```bash
+   mkdir -p ~/.config/systemd/user
+   podman generate systemd --name clawed-burrow --new > ~/.config/systemd/user/clawed-burrow.service
+   ```
+
+2. **Reload systemd and enable the service:**
+
+   ```bash
+   systemctl --user daemon-reload
+   systemctl --user enable clawed-burrow.service
+   ```
+
+3. **Enable lingering** (so the service runs even when you're not logged in):
+
+   ```bash
+   loginctl enable-linger $USER
+   ```
+
+4. **Start the service:**
+
+   ```bash
+   systemctl --user start clawed-burrow.service
+   ```
+
+### Viewing Logs
+
+View logs using journalctl:
+
+```bash
+# Follow logs in real-time
+journalctl --user -u clawed-burrow.service -f
+
+# View recent logs
+journalctl --user -u clawed-burrow.service -n 100
+
+# View logs since last boot
+journalctl --user -u clawed-burrow.service -b
+
+# View logs from a specific time
+journalctl --user -u clawed-burrow.service --since "1 hour ago"
+```
+
+Or use podman directly:
+
+```bash
+podman logs -f clawed-burrow
 ```
 
 ### Automatic Updates with Podman
 
-Instead of Watchtower, use Podman's built-in auto-update feature:
+Podman can automatically pull and restart containers when new images are available. This works with the systemd service setup above.
 
-```bash
-# Enable the auto-update timer (checks daily at midnight)
-systemctl --user enable --now podman-auto-update.timer
+1. **Enable the auto-update timer:**
 
-# Or run updates manually
-podman auto-update
-```
+   ```bash
+   systemctl --user enable --now podman-auto-update.timer
+   ```
 
-The compose file includes the `io.containers.autoupdate=registry` label which tells Podman to check for new images automatically.
+   This checks for updates daily at midnight.
+
+2. **Verify the timer is active:**
+
+   ```bash
+   systemctl --user list-timers | grep auto-update
+   ```
+
+3. **Run updates manually** (or check what would be updated):
+
+   ```bash
+   # Dry run - see what would be updated
+   podman auto-update --dry-run
+
+   # Actually update
+   podman auto-update
+   ```
+
+4. **Check update logs:**
+
+   ```bash
+   journalctl --user -u podman-auto-update.service
+   ```
+
+The container includes the `io.containers.autoupdate=registry` label which tells Podman to check the registry for new images. When an update is found, Podman pulls the new image and restarts the systemd service.
+
+**Note:** The `--new` flag in `podman generate systemd` is required for auto-updates to work. This ensures systemd creates a fresh container from the latest image on each restart rather than restarting the old container.
 
 ### With Tailscale Funnel (for secure remote access)
 
