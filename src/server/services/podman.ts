@@ -237,7 +237,10 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     // Ensure the image is pulled before creating the container
     await ensureImagePulled(CLAUDE_CODE_IMAGE);
 
-    // Create the container with --userns=keep-id for proper UID mapping
+    // Create the container with --userns=keep-id for proper UID mapping of mounted volumes.
+    // This maps host UID to container UID 1000, so mounted files have correct permissions.
+    // Note: Image files (like /home/claudeuser) still appear with wrong ownership due to
+    // rootless podman's storage layer - we fix this with chown after container start.
     // GPU access via CDI (Container Device Interface) - requires nvidia-container-toolkit
     // and CDI specs generated via: nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
     const createArgs = [
@@ -266,6 +269,10 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     await runPodman(['start', containerId]);
     log.info('Container started', { sessionId: config.sessionId, containerId });
 
+    // Fix home directory ownership - rootless podman's user namespace causes image files
+    // to appear with wrong ownership. The container user has sudo, so we can fix it.
+    await fixHomeDirectoryOwnership(containerId);
+
     // Configure git credential helper if token is provided
     if (config.githubToken) {
       await configureGitCredentials(containerId);
@@ -285,6 +292,25 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     });
     throw error;
   }
+}
+
+/**
+ * Fix home directory ownership in the container.
+ * Rootless podman's user namespace causes image files to appear with wrong ownership
+ * (typically root instead of claudeuser). We exec as root to fix this.
+ */
+async function fixHomeDirectoryOwnership(containerId: string): Promise<void> {
+  await runPodman([
+    'exec',
+    '--user',
+    'root',
+    containerId,
+    'chown',
+    '-R',
+    'claudeuser:claudeuser',
+    '/home/claudeuser',
+  ]);
+  log.info('Fixed home directory ownership', { containerId });
 }
 
 async function configureGitCredentials(containerId: string): Promise<void> {

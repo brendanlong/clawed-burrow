@@ -28,8 +28,12 @@ COPY . .
 # Build Next.js application
 RUN pnpm run build
 
-# Create data directory
-RUN mkdir -p /data/db /data/repos /data/worktrees
+# Create data directory and set ownership to node user (UID 1000)
+RUN mkdir -p /data/db /data/repos /data/worktrees && \
+    chown -R node:node /data /app
+
+# Switch to non-root user for security
+USER node
 
 # Expose port
 EXPOSE 3000
