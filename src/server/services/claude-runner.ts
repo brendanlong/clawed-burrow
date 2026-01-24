@@ -164,6 +164,19 @@ export async function runClaudeCommand(
     await prisma.claudeProcess.delete({ where: { sessionId } });
   }
 
+  // Verify the container is still running before trying to exec
+  const containerStatus = await getContainerStatus(containerId);
+  if (containerStatus !== 'running') {
+    log.error('runClaudeCommand: Container not running', {
+      sessionId,
+      containerId,
+      containerStatus,
+    });
+    throw new Error(
+      `Cannot execute Claude command: container is ${containerStatus === 'not_found' ? 'not found' : 'stopped'}`
+    );
+  }
+
   // Get the next sequence number for this session
   const lastMessage = await prisma.message.findFirst({
     where: { sessionId },
@@ -714,7 +727,7 @@ export async function markLastMessageAsInterrupted(sessionId: string): Promise<v
 export async function interruptClaude(sessionId: string): Promise<boolean> {
   log.info('interruptClaude: Interrupt requested', { sessionId });
 
-  // Check in-memory first - if we have it in memory, the container should be running
+  // Check in-memory first
   const process = runningProcesses.get(sessionId);
   if (process) {
     log.debug('interruptClaude: Found in-memory process', {
@@ -722,6 +735,20 @@ export async function interruptClaude(sessionId: string): Promise<boolean> {
       containerId: process.containerId,
       pid: process.pid,
     });
+
+    // Verify the container is still running before trying to signal
+    const containerStatus = await getContainerStatus(process.containerId);
+    if (containerStatus !== 'running') {
+      log.info('interruptClaude: Cleaning up stale in-memory process (container not running)', {
+        sessionId,
+        containerId: process.containerId,
+        containerStatus,
+      });
+      runningProcesses.delete(sessionId);
+      await prisma.claudeProcess.delete({ where: { sessionId } }).catch(() => {});
+      return false;
+    }
+
     if (process.pid) {
       // Use direct kill with PID for more reliable signal delivery
       await sendSignalToExec(process.containerId, process.pid, 'INT');
@@ -777,8 +804,22 @@ export function isClaudeRunning(sessionId: string): boolean {
  * Also verifies the container actually exists and cleans up stale records if not.
  */
 export async function isClaudeRunningAsync(sessionId: string): Promise<boolean> {
-  if (runningProcesses.has(sessionId)) {
-    return true;
+  // Check in-memory first, but verify container is still running
+  const inMemoryProcess = runningProcesses.get(sessionId);
+  if (inMemoryProcess) {
+    const containerStatus = await getContainerStatus(inMemoryProcess.containerId);
+    if (containerStatus === 'running') {
+      return true;
+    }
+    // Container is gone - clean up stale in-memory and DB records
+    log.info('isClaudeRunningAsync: Cleaning up stale in-memory process (container not running)', {
+      sessionId,
+      containerId: inMemoryProcess.containerId,
+      containerStatus,
+    });
+    runningProcesses.delete(sessionId);
+    await prisma.claudeProcess.delete({ where: { sessionId } }).catch(() => {});
+    return false;
   }
 
   const processRecord = await prisma.claudeProcess.findUnique({
