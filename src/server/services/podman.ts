@@ -839,6 +839,55 @@ export async function getContainerStatus(
   }
 }
 
+/**
+ * Container info returned from listSessionContainers.
+ */
+export interface SessionContainerInfo {
+  containerId: string;
+  sessionId: string;
+  status: 'running' | 'stopped';
+}
+
+/**
+ * List all claude-session-* containers and their status.
+ * Returns container ID, session ID (extracted from name), and running status.
+ */
+export async function listSessionContainers(): Promise<SessionContainerInfo[]> {
+  try {
+    // Use filter to only get containers with our naming pattern
+    // Format: ID<tab>Name<tab>State
+    const output = await runPodman([
+      'ps',
+      '-a',
+      '--filter',
+      'name=^claude-session-',
+      '--format',
+      '{{.ID}}\t{{.Names}}\t{{.State}}',
+    ]);
+
+    const containers: SessionContainerInfo[] = [];
+    const lines = output.trim().split('\n').filter(Boolean);
+
+    for (const line of lines) {
+      const [containerId, name, state] = line.split('\t');
+      // Extract session ID from container name (format: claude-session-{sessionId})
+      const sessionIdMatch = name?.match(/^claude-session-(.+)$/);
+      if (sessionIdMatch && containerId) {
+        containers.push({
+          containerId: containerId.trim(),
+          sessionId: sessionIdMatch[1],
+          status: state === 'running' ? 'running' : 'stopped',
+        });
+      }
+    }
+
+    return containers;
+  } catch (error) {
+    log.error('Failed to list session containers', toError(error));
+    return [];
+  }
+}
+
 export async function sendSignalToExec(
   containerId: string,
   pid: number,

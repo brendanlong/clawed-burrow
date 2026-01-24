@@ -81,6 +81,7 @@ import {
   stopContainer,
   removeContainer,
   getContainerStatus,
+  listSessionContainers,
   execInContainer,
   execInContainerWithTee,
   getExecStatus,
@@ -357,6 +358,106 @@ describe('podman service', () => {
 
       const status = await getContainerStatus('nonexistent');
       expect(status).toBe('not_found');
+    });
+  });
+
+  describe('listSessionContainers', () => {
+    it('should return list of session containers with status', async () => {
+      mockSpawn.mockImplementation(() => {
+        const proc = createMockProcess();
+        process.nextTick(() => {
+          proc.stdout.emit(
+            'data',
+            Buffer.from(
+              'abc123\tclaude-session-session-1\trunning\ndef456\tclaude-session-session-2\tstopped\n'
+            )
+          );
+          proc.emit('close', 0);
+        });
+        return proc;
+      });
+
+      const containers = await listSessionContainers();
+
+      expect(containers).toHaveLength(2);
+      expect(containers[0]).toEqual({
+        containerId: 'abc123',
+        sessionId: 'session-1',
+        status: 'running',
+      });
+      expect(containers[1]).toEqual({
+        containerId: 'def456',
+        sessionId: 'session-2',
+        status: 'stopped',
+      });
+    });
+
+    it('should return empty array when no containers exist', async () => {
+      mockSpawn.mockImplementation(() => {
+        const proc = createMockProcess();
+        process.nextTick(() => {
+          proc.stdout.emit('data', Buffer.from(''));
+          proc.emit('close', 0);
+        });
+        return proc;
+      });
+
+      const containers = await listSessionContainers();
+
+      expect(containers).toHaveLength(0);
+    });
+
+    it('should return empty array on podman error', async () => {
+      mockSpawn.mockImplementation(() => {
+        const proc = createMockProcess();
+        process.nextTick(() => {
+          proc.stderr.emit('data', Buffer.from('connection refused'));
+          proc.emit('close', 1);
+        });
+        return proc;
+      });
+
+      const containers = await listSessionContainers();
+
+      expect(containers).toHaveLength(0);
+    });
+
+    it('should filter out non-session containers', async () => {
+      mockSpawn.mockImplementation(() => {
+        const proc = createMockProcess();
+        process.nextTick(() => {
+          proc.stdout.emit(
+            'data',
+            Buffer.from(
+              'abc123\tclaude-session-session-1\trunning\nxyz789\tother-container\trunning\n'
+            )
+          );
+          proc.emit('close', 0);
+        });
+        return proc;
+      });
+
+      const containers = await listSessionContainers();
+
+      expect(containers).toHaveLength(1);
+      expect(containers[0].sessionId).toBe('session-1');
+    });
+
+    it('should correctly parse UUID session IDs', async () => {
+      const sessionUuid = '550e8400-e29b-41d4-a716-446655440000';
+      mockSpawn.mockImplementation(() => {
+        const proc = createMockProcess();
+        process.nextTick(() => {
+          proc.stdout.emit('data', Buffer.from(`abc123\tclaude-session-${sessionUuid}\trunning\n`));
+          proc.emit('close', 0);
+        });
+        return proc;
+      });
+
+      const containers = await listSessionContainers();
+
+      expect(containers).toHaveLength(1);
+      expect(containers[0].sessionId).toBe(sessionUuid);
     });
   });
 
