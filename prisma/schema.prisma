@@ -8,12 +8,13 @@ datasource db {
 }
 
 model AuthSession {
-  id        String   @id @default(uuid())
-  token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  ipAddress String?
-  userAgent String?
+  id             String   @id @default(uuid())
+  token          String   @unique
+  expiresAt      DateTime
+  lastActivityAt DateTime @default(now())
+  createdAt      DateTime @default(now())
+  ipAddress      String?
+  userAgent      String?
 
   @@index([token])
   @@index([expiresAt])

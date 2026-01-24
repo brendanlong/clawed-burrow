@@ -86,6 +86,7 @@ export const authRouter = router({
         id: true,
         createdAt: true,
         expiresAt: true,
+        lastActivityAt: true,
         ipAddress: true,
         userAgent: true,
       },

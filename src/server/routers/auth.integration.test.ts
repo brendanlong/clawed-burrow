@@ -31,7 +31,7 @@ const createCaller = (sessionId: string | null) => {
   const testRouter = router({
     auth: authRouter,
   });
-  return testRouter.createCaller({ sessionId });
+  return testRouter.createCaller({ sessionId, rotatedToken: null });
 };
 
 const TEST_PASSWORD = 'test-password-123';
@@ -64,6 +64,7 @@ describe('authRouter integration', () => {
   describe('login', () => {
     it('should login successfully with correct password and create a session in the database', async () => {
       const caller = createCaller(null);
+      const beforeLogin = Date.now();
       const result = await caller.auth.login({
         password: TEST_PASSWORD,
         ipAddress: '127.0.0.1',
@@ -82,6 +83,9 @@ describe('authRouter integration', () => {
       expect(sessions[0].ipAddress).toBe('127.0.0.1');
       expect(sessions[0].userAgent).toBe('test-agent');
       expect(sessions[0].expiresAt.getTime()).toBeGreaterThan(Date.now());
+      // Verify lastActivityAt is set to now
+      expect(sessions[0].lastActivityAt.getTime()).toBeGreaterThanOrEqual(beforeLogin);
+      expect(sessions[0].lastActivityAt.getTime()).toBeLessThanOrEqual(Date.now());
     });
 
     it('should reject invalid password', async () => {
@@ -218,8 +222,9 @@ describe('authRouter integration', () => {
   });
 
   describe('listSessions', () => {
-    it('should list all sessions with isCurrent flag', async () => {
+    it('should list all sessions with isCurrent flag and lastActivityAt', async () => {
       const loginCaller = createCaller(null);
+      const beforeLogin = Date.now();
 
       // Create sessions with different metadata
       const session1 = await loginCaller.auth.login({
@@ -253,10 +258,15 @@ describe('authRouter integration', () => {
       expect(current!.isCurrent).toBe(true);
       expect(current!.ipAddress).toBe('192.168.1.1');
       expect(current!.userAgent).toBe('Chrome');
+      // Verify lastActivityAt is included
+      expect(current!.lastActivityAt).toBeDefined();
+      expect(current!.lastActivityAt.getTime()).toBeGreaterThanOrEqual(beforeLogin);
 
       // Other sessions should not be current
       const others = result.sessions.filter((s) => s.id !== currentSession!.id);
       expect(others.every((s) => s.isCurrent === false)).toBe(true);
+      // All sessions should have lastActivityAt
+      expect(result.sessions.every((s) => s.lastActivityAt !== undefined)).toBe(true);
     });
 
     it('should require authentication', async () => {
