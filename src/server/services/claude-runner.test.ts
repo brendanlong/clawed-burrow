@@ -167,6 +167,40 @@ describe('claude-runner service', () => {
         'INT'
       );
     });
+
+    it('should return false and clean up when container not found', async () => {
+      mockPrisma.claudeProcess.findUnique.mockResolvedValue({
+        sessionId: 'test-session-stale-container',
+        containerId: 'nonexistent-container',
+        pid: 12345,
+      });
+      mockDockerFunctions.getContainerStatus.mockResolvedValue('not_found');
+
+      const result = await interruptClaude('test-session-stale-container');
+
+      expect(result).toBe(false);
+      expect(mockPrisma.claudeProcess.delete).toHaveBeenCalledWith({
+        where: { sessionId: 'test-session-stale-container' },
+      });
+      expect(mockDockerFunctions.sendSignalToExec).not.toHaveBeenCalled();
+    });
+
+    it('should return false and clean up when container is stopped', async () => {
+      mockPrisma.claudeProcess.findUnique.mockResolvedValue({
+        sessionId: 'test-session-stopped-container',
+        containerId: 'stopped-container',
+        pid: 12345,
+      });
+      mockDockerFunctions.getContainerStatus.mockResolvedValue('stopped');
+
+      const result = await interruptClaude('test-session-stopped-container');
+
+      expect(result).toBe(false);
+      expect(mockPrisma.claudeProcess.delete).toHaveBeenCalledWith({
+        where: { sessionId: 'test-session-stopped-container' },
+      });
+      expect(mockDockerFunctions.sendSignalToExec).not.toHaveBeenCalled();
+    });
   });
 
   describe('isClaudeRunning', () => {
@@ -187,14 +221,99 @@ describe('claude-runner service', () => {
       expect(result).toBe(false);
     });
 
-    it('should return true when process record exists in DB', async () => {
+    it('should return true when process record exists, container is running, and exec is running', async () => {
       mockPrisma.claudeProcess.findUnique.mockResolvedValue({
         sessionId: 'test-session-async-with-record',
+        containerId: 'container-123',
+        execId: 'exec-456',
       });
+      mockDockerFunctions.getContainerStatus.mockResolvedValue('running');
+      mockDockerFunctions.getExecStatus.mockResolvedValue({ running: true, exitCode: null });
 
       const result = await isClaudeRunningAsync('test-session-async-with-record');
 
       expect(result).toBe(true);
+    });
+
+    it('should return false and clean up when container not found', async () => {
+      mockPrisma.claudeProcess.findUnique.mockResolvedValue({
+        sessionId: 'test-session-stale',
+        containerId: 'nonexistent-container',
+        execId: 'exec-456',
+      });
+      mockDockerFunctions.getContainerStatus.mockResolvedValue('not_found');
+
+      const result = await isClaudeRunningAsync('test-session-stale');
+
+      expect(result).toBe(false);
+      expect(mockPrisma.claudeProcess.delete).toHaveBeenCalledWith({
+        where: { sessionId: 'test-session-stale' },
+      });
+    });
+
+    it('should return false and clean up when container is stopped', async () => {
+      mockPrisma.claudeProcess.findUnique.mockResolvedValue({
+        sessionId: 'test-session-stopped',
+        containerId: 'stopped-container',
+        execId: 'exec-456',
+      });
+      mockDockerFunctions.getContainerStatus.mockResolvedValue('stopped');
+
+      const result = await isClaudeRunningAsync('test-session-stopped');
+
+      expect(result).toBe(false);
+      expect(mockPrisma.claudeProcess.delete).toHaveBeenCalledWith({
+        where: { sessionId: 'test-session-stopped' },
+      });
+    });
+
+    it('should return false and clean up when exec is no longer running', async () => {
+      mockPrisma.claudeProcess.findUnique.mockResolvedValue({
+        sessionId: 'test-session-exec-done',
+        containerId: 'container-123',
+        execId: 'finished-exec',
+      });
+      mockDockerFunctions.getContainerStatus.mockResolvedValue('running');
+      mockDockerFunctions.getExecStatus.mockResolvedValue({ running: false, exitCode: 0 });
+
+      const result = await isClaudeRunningAsync('test-session-exec-done');
+
+      expect(result).toBe(false);
+      expect(mockPrisma.claudeProcess.delete).toHaveBeenCalledWith({
+        where: { sessionId: 'test-session-exec-done' },
+      });
+    });
+
+    it('should return false and clean up when exec not found', async () => {
+      mockPrisma.claudeProcess.findUnique.mockResolvedValue({
+        sessionId: 'test-session-exec-missing',
+        containerId: 'container-123',
+        execId: 'missing-exec',
+      });
+      mockDockerFunctions.getContainerStatus.mockResolvedValue('running');
+      mockDockerFunctions.getExecStatus.mockRejectedValue(new Error('exec not found'));
+
+      const result = await isClaudeRunningAsync('test-session-exec-missing');
+
+      expect(result).toBe(false);
+      expect(mockPrisma.claudeProcess.delete).toHaveBeenCalledWith({
+        where: { sessionId: 'test-session-exec-missing' },
+      });
+    });
+
+    it('should return true when record exists without execId but container is running', async () => {
+      // Legacy records without execId shouldn't be cleaned up if container is running
+      mockPrisma.claudeProcess.findUnique.mockResolvedValue({
+        sessionId: 'test-session-no-exec-id',
+        containerId: 'container-123',
+        execId: null,
+      });
+      mockDockerFunctions.getContainerStatus.mockResolvedValue('running');
+
+      const result = await isClaudeRunningAsync('test-session-no-exec-id');
+
+      expect(result).toBe(true);
+      expect(mockPrisma.claudeProcess.delete).not.toHaveBeenCalled();
     });
   });
 
