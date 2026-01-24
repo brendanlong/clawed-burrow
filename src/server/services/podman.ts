@@ -202,20 +202,26 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     }
 
     // Build volume binds
-    // Mount only this session's subdirectory from the workspaces volume for isolation
+    // Mount only this session's subdirectory for isolation
     // This prevents agents from accidentally interfering with other sessions
     const sessionId = extractSessionId(config.workspacePath);
-    const volumeArgs: string[] = [
-      // Use --mount with volume-subpath to mount only this session's workspace
-      '--mount',
-      `type=volume,source=${env.WORKSPACES_VOLUME},destination=/workspace,volume-subpath=${sessionId}`,
-      // Mount shared pnpm store volume
-      '-v',
-      `${env.PNPM_STORE_VOLUME}:/pnpm-store`,
-      // Mount shared Gradle cache volume
-      '-v',
-      `${env.GRADLE_CACHE_VOLUME}:/gradle-cache`,
-    ];
+    const volumeArgs: string[] = [];
+
+    if (isRunningInContainer()) {
+      // In production (service running in container), use named volume with subpath
+      volumeArgs.push(
+        '--mount',
+        `type=volume,source=${env.WORKSPACES_VOLUME},destination=/workspace,volume-subpath=${sessionId}`
+      );
+    } else {
+      // In development (running locally), bind mount the host's workspace directory
+      volumeArgs.push('-v', `${config.workspacePath}:/workspace`);
+    }
+
+    // Mount shared pnpm store volume
+    volumeArgs.push('-v', `${env.PNPM_STORE_VOLUME}:/pnpm-store`);
+    // Mount shared Gradle cache volume
+    volumeArgs.push('-v', `${env.GRADLE_CACHE_VOLUME}:/gradle-cache`);
 
     // Mount host's podman socket for container-in-container support (read-only)
     if (env.PODMAN_SOCKET_PATH) {
