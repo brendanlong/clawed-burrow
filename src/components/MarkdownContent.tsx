@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { marked, Renderer } from 'marked';
+import DOMPurify from 'dompurify';
 
 interface MarkdownContentProps {
   content: string;
@@ -27,10 +28,12 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
     try {
       const result = marked.parse(content);
       // marked.parse can return string or Promise<string>, but with sync options it returns string
-      return typeof result === 'string' ? result : '';
+      const rawHtml = typeof result === 'string' ? result : '';
+      // Sanitize HTML to prevent XSS attacks
+      return DOMPurify.sanitize(rawHtml);
     } catch {
-      // Fallback to plain text if parsing fails
-      return content;
+      // Fallback to sanitized plain text if parsing fails
+      return DOMPurify.sanitize(content);
     }
   }, [content]);
 

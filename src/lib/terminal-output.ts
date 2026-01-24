@@ -1,4 +1,5 @@
 import AnsiToHtml from 'ansi-to-html';
+import DOMPurify from 'dompurify';
 
 // Singleton converter instance with sensible defaults
 const converter = new AnsiToHtml({
@@ -80,16 +81,19 @@ export function stripAnsi(text: string): string {
  * Process terminal output for display:
  * 1. Handle carriage returns (progress bars)
  * 2. Convert ANSI color codes to HTML spans
+ * 3. Sanitize HTML to prevent XSS attacks
  *
- * Returns HTML string that should be rendered with dangerouslySetInnerHTML.
- * The output is safe because we use escapeXML: true in the converter.
+ * Returns sanitized HTML string that can be rendered with dangerouslySetInnerHTML.
  */
 export function processTerminalOutput(text: string): string {
   // First, simulate terminal carriage return behavior
   const processed = processCarriageReturns(text);
 
   // Then convert ANSI codes to HTML
-  return converter.toHtml(processed);
+  const html = converter.toHtml(processed);
+
+  // Sanitize the output to prevent XSS (defense in depth)
+  return DOMPurify.sanitize(html);
 }
 
 /**
