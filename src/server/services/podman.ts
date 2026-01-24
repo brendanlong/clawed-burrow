@@ -120,8 +120,15 @@ async function runPodmanIgnoreErrors(args: string[]): Promise<string> {
 /**
  * Ensure an image is up-to-date by pulling it.
  * Pulls are rate-limited to once per 5 minutes per image to avoid excessive pulls.
+ * Set SKIP_IMAGE_PULL=true to skip pulling entirely (useful for testing local builds).
  */
 async function ensureImagePulled(imageName: string): Promise<void> {
+  // Skip pulling if explicitly disabled (useful for testing local image builds)
+  if (env.SKIP_IMAGE_PULL) {
+    log.debug('Skipping pull, SKIP_IMAGE_PULL is set', { imageName });
+    return;
+  }
+
   const lastPull = lastPullTime.get(imageName);
   const now = Date.now();
 
