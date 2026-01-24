@@ -2,15 +2,14 @@ import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc';
 import { prisma } from '@/lib/prisma';
 import { TRPCError } from '@trpc/server';
-import type { SessionStatus } from '@/lib/types';
 import {
   createAndStartContainer,
   stopContainer,
   removeContainer,
-  getContainerStatus,
   cloneRepoInVolume,
   removeWorkspaceFromVolume,
 } from '../services/podman';
+import { syncSessionStatus } from '../services/session-reconciler';
 import { sseEvents } from '../services/events';
 import { createLogger, toError } from '@/lib/logger';
 
@@ -145,6 +144,9 @@ export const sessionsRouter = router({
   get: protectedProcedure
     .input(z.object({ sessionId: z.string().uuid() }))
     .query(async ({ input }) => {
+      // Sync session status with actual container state before returning
+      const newStatus = await syncSessionStatus(input.sessionId);
+
       const session = await prisma.session.findUnique({
         where: { id: input.sessionId },
       });
@@ -156,12 +158,20 @@ export const sessionsRouter = router({
         });
       }
 
+      // If status was updated, emit SSE event so other clients are notified
+      if (newStatus !== null) {
+        sseEvents.emitSessionUpdate(input.sessionId, session);
+      }
+
       return { session };
     }),
 
   start: protectedProcedure
     .input(z.object({ sessionId: z.string().uuid() }))
     .mutation(async ({ input }) => {
+      // Sync status with actual container state first
+      await syncSessionStatus(input.sessionId);
+
       const session = await prisma.session.findUnique({
         where: { id: input.sessionId },
       });
@@ -263,31 +273,20 @@ export const sessionsRouter = router({
   syncStatus: protectedProcedure
     .input(z.object({ sessionId: z.string().uuid() }))
     .mutation(async ({ input }) => {
+      // Use the centralized syncSessionStatus function
+      const newStatus = await syncSessionStatus(input.sessionId);
+
       const session = await prisma.session.findUnique({
         where: { id: input.sessionId },
       });
 
-      if (!session || !session.containerId) {
-        return { session };
+      if (!session) {
+        return { session: null };
       }
 
-      const containerStatus = await getContainerStatus(session.containerId);
-
-      let newStatus: SessionStatus = session.status as SessionStatus;
-      if (containerStatus === 'not_found') {
-        newStatus = 'stopped';
-      } else if (containerStatus === 'stopped' && session.status === 'running') {
-        newStatus = 'stopped';
-      } else if (containerStatus === 'running' && session.status === 'stopped') {
-        newStatus = 'running';
-      }
-
-      if (newStatus !== session.status) {
-        const updatedSession = await prisma.session.update({
-          where: { id: session.id },
-          data: { status: newStatus },
-        });
-        return { session: updatedSession };
+      // If status was updated, emit SSE event so other clients are notified
+      if (newStatus !== null) {
+        sseEvents.emitSessionUpdate(input.sessionId, session);
       }
 
       return { session };
