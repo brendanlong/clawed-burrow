@@ -30,10 +30,15 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
       // marked.parse can return string or Promise<string>, but with sync options it returns string
       const rawHtml = typeof result === 'string' ? result : '';
       // Sanitize HTML to prevent XSS attacks
-      return DOMPurify.sanitize(rawHtml);
+      // Allow target attribute on links so they open in new windows
+      return DOMPurify.sanitize(rawHtml, {
+        ADD_ATTR: ['target'],
+      });
     } catch {
       // Fallback to sanitized plain text if parsing fails
-      return DOMPurify.sanitize(content);
+      return DOMPurify.sanitize(content, {
+        ADD_ATTR: ['target'],
+      });
     }
   }, [content]);
 
