@@ -254,9 +254,11 @@ async function updateGitCache(repoFullName: string, githubToken?: string): Promi
       await runPodmanIgnoreErrors(['rm', '-f', containerId]);
     }
   } catch (error) {
-    log.warn('Failed to update git cache, will clone without reference', toError(error), {
-      repoFullName,
-    });
+    log.warn(
+      'Failed to update git cache, will clone without reference',
+      { repoFullName },
+      toError(error)
+    );
     return false;
   }
 }
