@@ -1,21 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import { SessionStatusBadge } from '@/components/SessionStatusBadge';
-import { Spinner } from '@/components/ui/spinner';
+import { SessionActionButton } from '@/components/SessionActionButton';
 import type { Session } from '@/hooks/useSessionList';
 import type { SessionActions } from '@/hooks/useSessionActions';
 
@@ -29,19 +16,12 @@ export interface SessionListItemProps {
  * Receives session data and actions as props, making it easily testable.
  */
 export function SessionListItem({ session, actions }: SessionListItemProps) {
-  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
-
   const repoName = session.repoUrl.replace('https://github.com/', '').replace('.git', '');
 
   const isArchiving = actions.isArchiving(session.id);
   const isStarting = actions.isStarting(session.id);
   const isStopping = actions.isStopping(session.id);
   const isArchived = session.status === 'archived';
-
-  const handleArchive = () => {
-    actions.archive(session.id);
-    setArchiveDialogOpen(false);
-  };
 
   return (
     <li
@@ -69,52 +49,28 @@ export function SessionListItem({ session, actions }: SessionListItemProps) {
             {!isArchived && (
               <>
                 {session.status === 'stopped' && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                  <SessionActionButton
+                    action="start"
                     onClick={() => actions.start(session.id)}
-                    disabled={isStarting}
-                  >
-                    {isStarting ? 'Starting...' : 'Start'}
-                  </Button>
+                    isPending={isStarting}
+                    variant="ghost"
+                  />
                 )}
                 {session.status === 'running' && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                  <SessionActionButton
+                    action="stop"
                     onClick={() => actions.stop(session.id)}
-                    disabled={isStopping}
-                  >
-                    {isStopping ? 'Stopping...' : 'Stop'}
-                  </Button>
+                    isPending={isStopping}
+                    variant="ghost"
+                  />
                 )}
-                {isArchiving ? (
-                  <Button variant="ghost" size="sm" disabled className="text-muted-foreground">
-                    <Spinner size="sm" className="mr-2" />
-                    Archiving...
-                  </Button>
-                ) : (
-                  <AlertDialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="sm" className="text-muted-foreground">
-                        Archive
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Archive session?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This will archive the session &quot;{session.name}&quot; and remove its
-                          workspace. You can still view the message history in archived sessions.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleArchive}>Archive</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                )}
+                <SessionActionButton
+                  action="archive"
+                  onClick={() => actions.archive(session.id)}
+                  isPending={isArchiving}
+                  variant="ghost"
+                  sessionName={session.name}
+                />
               </>
             )}
           </div>

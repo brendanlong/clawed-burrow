@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { SessionStatusBadge } from '@/components/SessionStatusBadge';
+import { SessionActionButton } from '@/components/SessionActionButton';
 
 interface SessionHeaderProps {
   session: {
@@ -16,16 +17,20 @@ interface SessionHeaderProps {
   };
   onStart: () => void;
   onStop: () => void;
+  onArchive?: () => void;
   isStarting: boolean;
   isStopping: boolean;
+  isArchiving?: boolean;
 }
 
 export function SessionHeader({
   session,
   onStart,
   onStop,
+  onArchive,
   isStarting,
   isStopping,
+  isArchiving = false,
 }: SessionHeaderProps) {
   const repoName = session.repoUrl.replace('https://github.com/', '').replace('.git', '');
 
@@ -58,14 +63,24 @@ export function SessionHeader({
           <SessionStatusBadge status={session.status} />
 
           {session.status === 'stopped' && (
-            <Button size="sm" onClick={onStart} disabled={isStarting}>
-              {isStarting ? 'Starting...' : 'Start'}
-            </Button>
+            <SessionActionButton action="start" onClick={onStart} isPending={isStarting} />
           )}
           {session.status === 'running' && (
-            <Button variant="secondary" size="sm" onClick={onStop} disabled={isStopping}>
-              {isStopping ? 'Stopping...' : 'Stop'}
-            </Button>
+            <SessionActionButton
+              action="stop"
+              onClick={onStop}
+              isPending={isStopping}
+              variant="secondary"
+            />
+          )}
+          {(session.status === 'stopped' || session.status === 'running') && onArchive && (
+            <SessionActionButton
+              action="archive"
+              onClick={onArchive}
+              isPending={isArchiving}
+              variant="secondary"
+              sessionName={session.name}
+            />
           )}
         </div>
       </div>

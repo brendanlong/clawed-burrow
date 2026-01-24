@@ -87,6 +87,10 @@ function useSessionState(sessionId: string) {
     },
   });
 
+  // The API endpoint is "delete" but it now archives instead of permanently deleting
+  // Session update comes via SSE subscription (lines 64-75), so no onSuccess handler needed
+  const archiveMutation = trpc.sessions.delete.useMutation();
+
   const start = useCallback(() => {
     startMutation.mutate({ sessionId });
   }, [sessionId, startMutation]);
@@ -95,13 +99,19 @@ function useSessionState(sessionId: string) {
     stopMutation.mutate({ sessionId });
   }, [sessionId, stopMutation]);
 
+  const archive = useCallback(() => {
+    archiveMutation.mutate({ sessionId });
+  }, [sessionId, archiveMutation]);
+
   return {
     session: sessionData?.session,
     isLoading,
     start,
     stop,
+    archive,
     isStarting: startMutation.isPending,
     isStopping: stopMutation.isPending,
+    isArchiving: archiveMutation.isPending,
   };
 }
 
@@ -343,14 +353,16 @@ function useClaudeState(sessionId: string) {
 }
 
 function SessionView({ sessionId }: { sessionId: string }) {
-  // Session state: data, start/stop
+  // Session state: data, start/stop/archive
   const {
     session,
     isLoading: sessionLoading,
     start,
     stop,
+    archive,
     isStarting,
     isStopping,
+    isArchiving,
   } = useSessionState(sessionId);
 
   // Message state: history, pagination, token usage
@@ -504,8 +516,10 @@ function SessionView({ sessionId }: { sessionId: string }) {
         session={session}
         onStart={start}
         onStop={stop}
+        onArchive={archive}
         isStarting={isStarting}
         isStopping={isStopping}
+        isArchiving={isArchiving}
       />
 
       <MessageList
