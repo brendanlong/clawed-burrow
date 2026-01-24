@@ -38,6 +38,12 @@ const envSchema = z.object({
   // This socket is mounted into runner containers so Claude Code can run podman/docker commands
   // Example: /run/user/1000/podman/podman.sock
   PODMAN_SOCKET_PATH: z.string().optional(),
+  // Skip pulling runner images on container start
+  // Useful for testing local image builds without pushing to registry
+  SKIP_IMAGE_PULL: z
+    .string()
+    .optional()
+    .transform((val) => val === 'true' || val === '1'),
 });
 
 export type Env = z.infer<typeof envSchema>;
