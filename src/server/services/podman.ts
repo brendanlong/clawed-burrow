@@ -51,8 +51,24 @@ const podmanEnv: NodeJS.ProcessEnv = isRunningInContainer()
  */
 async function runPodman(args: string[], useSudo = false): Promise<string> {
   return new Promise((resolve, reject) => {
-    const command = useSudo ? 'sudo' : 'podman';
-    const finalArgs = useSudo ? ['podman', ...args] : args;
+    let command: string;
+    let finalArgs: string[];
+
+    if (useSudo) {
+      // When using sudo, we need to preserve CONTAINER_HOST so sudo's podman
+      // talks to the same Podman instance (via the socket) as the non-sudo commands.
+      // Without this, sudo podman would use root's separate Podman instance.
+      command = 'sudo';
+      if (podmanEnv.CONTAINER_HOST) {
+        finalArgs = [`CONTAINER_HOST=${podmanEnv.CONTAINER_HOST}`, 'podman', ...args];
+      } else {
+        finalArgs = ['podman', ...args];
+      }
+    } else {
+      command = 'podman';
+      finalArgs = args;
+    }
+
     log.debug('runPodman: Executing', { args: finalArgs, useSudo });
     const proc = spawn(command, finalArgs, { env: podmanEnv });
     let stdout = '';
