@@ -402,21 +402,41 @@ sudo -u clawedburrow journalctl --user -u clawed-burrow.service -f
 sudo -u clawedburrow podman logs -f clawed-burrow
 ```
 
-### With Tailscale Funnel (for secure remote access)
+### With Tailscale Serve (for access within your Tailnet)
 
-Tailscale Funnel allows secure remote access without exposing ports or requiring traditional VPN setup.
+Tailscale Serve exposes your application to devices on your Tailnet over HTTPS. This is more secure than Funnel since only devices on your Tailnet can access it.
 
-1. **Install Tailscale** on your server: https://tailscale.com/download
+1. **Install Tailscale** on your server: https://tailscale.com/kb/1017/install
 
-2. **Enable Funnel** for your machine:
+2. **Enable HTTPS** in your Tailscale admin console: https://tailscale.com/kb/1153/enabling-https
+
+3. **Expose your app** with Tailscale Serve:
 
    ```bash
-   # Enable HTTPS and Funnel in Tailscale admin console first
-   # Then expose your app:
+   tailscale serve 3000
+   ```
+
+4. **Access your app** from any device on your Tailnet at `https://<machine-name>.<tailnet-name>.ts.net`
+
+**Note:** HTTPS is required for features like clipboard copy and browser notifications to work properly.
+
+For persistent configuration, see the [Tailscale Serve documentation](https://tailscale.com/kb/1312/serve).
+
+### With Tailscale Funnel (for public internet access)
+
+Tailscale Funnel exposes your application to the public internet without exposing ports directly. Use this if you need access from devices not on your Tailnet.
+
+1. **Install Tailscale** on your server: https://tailscale.com/kb/1017/install
+
+2. **Enable Funnel** for your machine in the Tailscale admin console
+
+3. **Expose your app** with Tailscale Funnel:
+
+   ```bash
    tailscale funnel 3000
    ```
 
-3. **Access your app** at `https://<machine-name>.<tailnet-name>.ts.net`
+4. **Access your app** at `https://<machine-name>.<tailnet-name>.ts.net`
 
 For persistent Funnel configuration, see the [Tailscale Funnel documentation](https://tailscale.com/kb/1223/funnel).
 

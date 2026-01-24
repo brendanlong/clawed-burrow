@@ -24,7 +24,7 @@ The system uses **rootless Podman** for container management, which provides:
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────────────────┐
 │   Mobile/Web    │     │   Tailscale     │     │      Home Server            │
-│   Browser       │────►│   Funnel        │────►│  ┌─────────────────────┐    │
+│   Browser       │────►│  Serve/Funnel   │────►│  ┌─────────────────────┐    │
 │                 │     │                 │     │  │   Next.js + tRPC    │    │
 └─────────────────┘     └─────────────────┘     │  │   - Auth            │    │
                                                 │  │   - Session mgmt    │    │
@@ -526,7 +526,7 @@ ORDER BY sequence ASC;
 
 ### Authentication Layers
 
-1. **Tailscale Funnel** — Traffic encrypted, no exposed ports
+1. **Tailscale Serve/Funnel** — Traffic encrypted over HTTPS, no exposed ports
 2. **Password Authentication** — Single-user auth with:
    - Password stored as base64-encoded Argon2 hash in `PASSWORD_HASH` env var
    - Database-backed sessions with 256-bit random tokens
@@ -690,7 +690,7 @@ pnpm test:coverage # With coverage report
 - Docker container lifecycle
 - Claude Code integration with streaming
 - Basic chat UI
-- Tailscale Funnel setup
+- Tailscale Serve/Funnel setup
 
 ### Phase 2: Polish
 
