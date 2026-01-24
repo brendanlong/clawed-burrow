@@ -10,16 +10,6 @@ const log = createLogger('podman');
 // Use env variable if set, otherwise default to local build
 const CLAUDE_CODE_IMAGE = env.CLAUDE_RUNNER_IMAGE;
 
-/**
- * Extract the session ID from a workspace path.
- * Workspace paths are like /data/workspaces/{sessionId} or ./data/workspaces/{sessionId}
- */
-function extractSessionId(workspacePath: string): string {
-  // Get the last path component (the session ID)
-  const parts = workspacePath.split('/').filter(Boolean);
-  return parts[parts.length - 1];
-}
-
 // Track last pull time per image to avoid pulling too frequently
 const lastPullTime = new Map<string, number>();
 const PULL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes (matches Watchtower poll interval)
@@ -143,9 +133,172 @@ async function ensureImagePulled(imageName: string): Promise<void> {
   }
 }
 
+export interface CloneConfig {
+  sessionId: string;
+  repoFullName: string;
+  branch: string;
+  githubToken?: string;
+}
+
+export interface CloneResult {
+  repoPath: string; // Relative path to repo within workspace (e.g., "my-repo")
+}
+
+/**
+ * Clone a repository into the workspaces volume using a temporary container.
+ * This ensures the clone goes directly into the named volume, avoiding
+ * permission issues between the service and runner containers.
+ */
+export async function cloneRepoInVolume(config: CloneConfig): Promise<CloneResult> {
+  const containerName = `clone-${config.sessionId}`;
+  log.info('Cloning repo in volume', {
+    sessionId: config.sessionId,
+    repoFullName: config.repoFullName,
+    branch: config.branch,
+  });
+
+  try {
+    // Ensure the image is pulled before creating the container
+    await ensureImagePulled(CLAUDE_CODE_IMAGE);
+
+    // Build the clone URL with token if provided
+    const repoUrl = config.githubToken
+      ? `https://${config.githubToken}@github.com/${config.repoFullName}.git`
+      : `https://github.com/${config.repoFullName}.git`;
+
+    // Extract repo name from full name (e.g., "owner/repo" -> "repo")
+    const repoName = config.repoFullName.split('/')[1];
+
+    // Create a temporary container with the workspaces volume mounted
+    // Mount only this session's subdirectory for isolation
+    const createArgs = [
+      'create',
+      '--name',
+      containerName,
+      '--rm', // Auto-remove when stopped
+      '--mount',
+      `type=volume,source=${env.WORKSPACES_VOLUME},destination=/workspace,volume-subpath=${config.sessionId}`,
+      '-w',
+      '/workspace',
+      CLAUDE_CODE_IMAGE,
+      'tail',
+      '-f',
+      '/dev/null',
+    ];
+
+    const containerId = (await runPodman(createArgs)).trim();
+    log.info('Clone container created', { sessionId: config.sessionId, containerId });
+
+    // Start the container
+    await runPodman(['start', containerId]);
+
+    try {
+      // Clone the repository
+      await runPodman([
+        'exec',
+        containerId,
+        'git',
+        'clone',
+        '--branch',
+        config.branch,
+        '--single-branch',
+        repoUrl,
+        repoName,
+      ]);
+
+      // Configure the remote URL without the token for security
+      await runPodman([
+        'exec',
+        containerId,
+        'git',
+        '-C',
+        repoName,
+        'remote',
+        'set-url',
+        'origin',
+        `https://github.com/${config.repoFullName}.git`,
+      ]);
+
+      // Create and check out a session-specific branch
+      const sessionBranch = `${env.SESSION_BRANCH_PREFIX}${config.sessionId}`;
+      await runPodman([
+        'exec',
+        containerId,
+        'git',
+        '-C',
+        repoName,
+        'checkout',
+        '-b',
+        sessionBranch,
+      ]);
+
+      log.info('Repo cloned successfully', {
+        sessionId: config.sessionId,
+        repoName,
+        branch: sessionBranch,
+      });
+
+      return { repoPath: repoName };
+    } finally {
+      // Always clean up the temporary container
+      await runPodmanIgnoreErrors(['stop', containerId]);
+      await runPodmanIgnoreErrors(['rm', '-f', containerId]);
+    }
+  } catch (error) {
+    log.error('Failed to clone repo in volume', toError(error), {
+      sessionId: config.sessionId,
+      repoFullName: config.repoFullName,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Remove a session's workspace from the volume.
+ */
+export async function removeWorkspaceFromVolume(sessionId: string): Promise<void> {
+  const containerName = `cleanup-${sessionId}`;
+  log.info('Removing workspace from volume', { sessionId });
+
+  try {
+    // Ensure the image is pulled
+    await ensureImagePulled(CLAUDE_CODE_IMAGE);
+
+    // Create a temporary container with the workspaces volume mounted
+    const createArgs = [
+      'create',
+      '--name',
+      containerName,
+      '--rm',
+      '--mount',
+      `type=volume,source=${env.WORKSPACES_VOLUME},destination=/workspace,volume-subpath=${sessionId}`,
+      '-w',
+      '/workspace',
+      CLAUDE_CODE_IMAGE,
+      'tail',
+      '-f',
+      '/dev/null',
+    ];
+
+    const containerId = (await runPodman(createArgs)).trim();
+    await runPodman(['start', containerId]);
+
+    try {
+      // Remove all contents
+      await runPodman(['exec', containerId, 'sh', '-c', 'rm -rf /workspace/*']);
+      log.info('Workspace removed', { sessionId });
+    } finally {
+      await runPodmanIgnoreErrors(['stop', containerId]);
+      await runPodmanIgnoreErrors(['rm', '-f', containerId]);
+    }
+  } catch (error) {
+    log.error('Failed to remove workspace from volume', toError(error), { sessionId });
+    // Don't throw - cleanup failures shouldn't block session deletion
+  }
+}
+
 export interface ContainerConfig {
   sessionId: string;
-  workspacePath: string;
   repoPath: string; // Relative path to repo within workspace (e.g., "my-repo")
   githubToken?: string;
 }
@@ -204,19 +357,11 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     // Build volume binds
     // Mount only this session's subdirectory for isolation
     // This prevents agents from accidentally interfering with other sessions
-    const sessionId = extractSessionId(config.workspacePath);
-    const volumeArgs: string[] = [];
-
-    if (isRunningInContainer()) {
-      // In production (service running in container), use named volume with subpath
-      volumeArgs.push(
-        '--mount',
-        `type=volume,source=${env.WORKSPACES_VOLUME},destination=/workspace,volume-subpath=${sessionId}`
-      );
-    } else {
-      // In development (running locally), bind mount the host's workspace directory
-      volumeArgs.push('-v', `${config.workspacePath}:/workspace`);
-    }
+    const volumeArgs: string[] = [
+      // Use named volume with subpath for workspace isolation
+      '--mount',
+      `type=volume,source=${env.WORKSPACES_VOLUME},destination=/workspace,volume-subpath=${config.sessionId}`,
+    ];
 
     // Mount shared pnpm store volume
     volumeArgs.push('-v', `${env.PNPM_STORE_VOLUME}:/pnpm-store`);

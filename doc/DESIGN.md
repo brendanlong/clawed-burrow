@@ -53,7 +53,6 @@ interface Session {
   name: string; // User-provided name
   repoUrl: string; // GitHub clone URL
   branch: string; // Branch name
-  workspacePath: string; // Path to workspace directory on host (e.g., /data/workspaces/{sessionId})
   repoPath: string; // Relative path to repo within workspace (e.g., "my-repo")
   containerId: string | null; // Docker container ID when running
   status: 'creating' | 'running' | 'stopped' | 'error';
@@ -70,7 +69,7 @@ The system uses **named Docker volumes** to avoid permission issues with rootles
 
 1. **Database** (`clawed-burrow-db`): SQLite database for the service container at `/data/db`.
 
-2. **Workspaces** (`clawed-burrow-workspaces`): Session workspaces at `/data/workspaces`. Shared between service and runner containers.
+2. **Workspaces** (`clawed-burrow-workspaces`): Session workspaces. Git clones and workspace operations happen inside containers with this volume mounted.
 
 3. **pnpm Store** (`clawed-burrow-pnpm-store`): Shared pnpm cache at `/pnpm-store` in runner containers. Speeds up package installs.
 
@@ -255,17 +254,19 @@ claude.getHistory({
 2. Server calls `sessions.create()`
 3. Server creates session record with status `creating` and returns immediately
 4. UI navigates to session page, polls for status updates
-5. Background: Server clones repo to `/data/workspaces/{sessionId}/{repo-name}`
-6. Background: Server starts container with:
-   - Workspace mounted at `/workspace` (the session directory, not just the repo)
+5. Background: Server spawns a temporary container with the workspaces volume mounted
+6. Background: Clone runs inside the container via `git clone` to `/workspace/{repo-name}`
+7. Background: Temporary container is removed
+8. Background: Server starts the session container with:
+   - Session's workspace mounted at `/workspace` (using `volume-subpath` for isolation)
    - Working directory set to `/workspace/{repo-name}` (the cloned repo)
    - GPU access via CDI (`--device nvidia.com/gpu=all`)
-   - Claude auth mounted from host (`~/.claude` and `~/.claude.json`)
+   - Claude auth copied into container (not bind mounted)
    - Podman socket mounted (for podman-in-podman)
    - GITHUB_TOKEN env var for push/pull access
    - Git credential helper configured automatically
    - Passwordless sudo for package installation
-7. Session status → `running`, statusMessage → null
+9. Session status → `running`, statusMessage → null
 
 ### Interaction Flow
 

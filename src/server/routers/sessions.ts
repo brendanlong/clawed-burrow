@@ -3,12 +3,13 @@ import { router, protectedProcedure } from '../trpc';
 import { prisma } from '@/lib/prisma';
 import { TRPCError } from '@trpc/server';
 import type { SessionStatus } from '@/lib/types';
-import { cloneRepo, removeWorkspace } from '../services/git';
 import {
   createAndStartContainer,
   stopContainer,
   removeContainer,
   getContainerStatus,
+  cloneRepoInVolume,
+  removeWorkspaceFromVolume,
 } from '../services/podman';
 import { sseEvents } from '../services/events';
 import { createLogger, toError } from '@/lib/logger';
@@ -35,15 +36,15 @@ async function setupSession(
   };
 
   try {
-    // Clone the repository
+    // Clone the repository into the workspaces volume
     log.info('Cloning repository', { sessionId, repoFullName, branch });
-    const { workspacePath, repoPath } = await cloneRepo(
+    const { repoPath } = await cloneRepoInVolume({
+      sessionId,
       repoFullName,
       branch,
-      sessionId,
-      githubToken
-    );
-    log.info('Repository cloned', { sessionId, workspacePath, repoPath });
+      githubToken,
+    });
+    log.info('Repository cloned', { sessionId, repoPath });
 
     // Update status
     await updateStatus('Starting container...');
@@ -52,7 +53,6 @@ async function setupSession(
     log.info('Starting container', { sessionId });
     const containerId = await createAndStartContainer({
       sessionId,
-      workspacePath,
       repoPath,
       githubToken,
     });
@@ -62,7 +62,6 @@ async function setupSession(
     const session = await prisma.session.update({
       where: { id: sessionId },
       data: {
-        workspacePath,
         repoPath,
         containerId,
         status: 'running',
@@ -108,7 +107,7 @@ export const sessionsRouter = router({
           name: input.name,
           repoUrl: `https://github.com/${input.repoFullName}.git`,
           branch: input.branch,
-          workspacePath: '', // Will be updated after clone
+          workspacePath: '', // Deprecated - workspaces now use named volumes
           status: 'creating',
           statusMessage: 'Cloning repository...',
           initialPrompt: input.initialPrompt || null,
@@ -182,7 +181,6 @@ export const sessionsRouter = router({
         const githubToken = process.env.GITHUB_TOKEN;
         const containerId = await createAndStartContainer({
           sessionId: session.id,
-          workspacePath: session.workspacePath,
           repoPath: session.repoPath,
           githubToken,
         });
@@ -251,8 +249,8 @@ export const sessionsRouter = router({
         await removeContainer(session.containerId);
       }
 
-      // Remove workspace
-      await removeWorkspace(session.id);
+      // Remove workspace from volume
+      await removeWorkspaceFromVolume(session.id);
 
       // Delete session (messages will cascade)
       await prisma.session.delete({
