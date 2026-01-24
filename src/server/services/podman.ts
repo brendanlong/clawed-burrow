@@ -423,6 +423,9 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
       await fixPodmanSocketPermissions(containerId);
     }
 
+    // Fix sudo permissions (rootless Podman without --userns=keep-id can break setuid)
+    await fixSudoPermissions(containerId);
+
     return containerId;
   } catch (error) {
     log.error('Failed to create/start container', toError(error), {
@@ -577,6 +580,26 @@ async function fixPodmanSocketPermissions(containerId: string): Promise<void> {
   // Make the socket world-readable/writable so claudeuser can access it
   await runPodman(['exec', '--user', 'root', containerId, 'chmod', '666', '/var/run/docker.sock']);
   log.info('Fixed podman socket permissions', { containerId });
+}
+
+/**
+ * Fix sudo permissions inside the container.
+ * In rootless Podman without --userns=keep-id, the sudo binary may lose its
+ * setuid bit and root ownership from the container's perspective. This fixes
+ * that by re-applying the correct ownership and permissions.
+ */
+async function fixSudoPermissions(containerId: string): Promise<void> {
+  // Ensure sudo is owned by root and has the setuid bit set
+  await runPodman([
+    'exec',
+    '--user',
+    'root',
+    containerId,
+    'sh',
+    '-c',
+    'chown root:root /usr/bin/sudo && chmod 4755 /usr/bin/sudo',
+  ]);
+  log.info('Fixed sudo permissions', { containerId });
 }
 
 export async function stopContainer(containerId: string): Promise<void> {
