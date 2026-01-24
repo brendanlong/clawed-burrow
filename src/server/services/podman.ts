@@ -1011,10 +1011,12 @@ export async function listSessionContainers(): Promise<SessionContainerInfo[]> {
       // Extract session ID from container name (format: claude-session-{sessionId})
       const sessionIdMatch = name?.match(/^claude-session-(.+)$/);
       if (sessionIdMatch && containerId) {
+        // State can be either "running" (direct podman) or "Up X minutes" (via Docker socket)
+        const isRunning = state === 'running' || state?.toLowerCase().startsWith('up ');
         containers.push({
           containerId: containerId.trim(),
           sessionId: sessionIdMatch[1],
-          status: state === 'running' ? 'running' : 'stopped',
+          status: isRunning ? 'running' : 'stopped',
         });
       }
     }
