@@ -150,9 +150,9 @@ describe('podman service', () => {
       expect(createCall![1]).toContain('--userns=keep-id');
       expect(createCall![1]).toContain('--name');
       expect(createCall![1]).toContain('claude-session-test-session');
-      // Working directory should be set to /workspace/{repoPath}
+      // Working directory should be set to /workspaces-volume/{sessionId}/{repoPath}
       const wIndex = createCall![1].indexOf('-w');
-      expect(createCall![1][wIndex + 1]).toBe('/workspace/my-repo');
+      expect(createCall![1][wIndex + 1]).toBe('/workspaces-volume/test-session/my-repo');
 
       // When PODMAN_SOCKET_PATH is not set, should NOT include socket mount or CONTAINER_HOST env
       const createArgs = createCall![1] as string[];
@@ -198,8 +198,9 @@ describe('podman service', () => {
 
       const createCall = mockSpawn.mock.calls.find((call) => call[1] && call[1].includes('create'));
       expect(createCall).toBeDefined();
+      // When repoPath is empty, working directory is /workspaces-volume/{sessionId}
       const wIndex = createCall![1].indexOf('-w');
-      expect(createCall![1][wIndex + 1]).toBe('/workspace');
+      expect(createCall![1][wIndex + 1]).toBe('/workspaces-volume/test-session');
     });
 
     it('should return existing container ID if already running', async () => {

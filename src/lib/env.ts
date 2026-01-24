@@ -6,15 +6,15 @@ const envSchema = z.object({
   GITHUB_TOKEN: z.string().optional(),
   CLAUDE_AUTH_PATH: z.string().default('/root/.claude'),
   // Path inside the container where workspaces are stored (for filesystem operations)
-  // In production, this is /data/workspaces (bind-mounted from host)
+  // In production, this is /data/workspaces (mounted from WORKSPACES_VOLUME)
   // The database uses a separate named volume at /data/db
   DATA_DIR: z
     .string()
     .default('/data/workspaces')
     .transform((p) => resolve(p)),
-  // Host path to data directory - used for bind mounts when creating session containers
-  // In Docker-in-Docker setups, this must be the path on the Docker host, not inside this container
-  DATA_HOST_PATH: z.string().optional(),
+  // Named volume for workspaces - shared between service and runner containers
+  // This avoids permission issues with bind mounts in rootless Podman
+  WORKSPACES_VOLUME: z.string().default('clawed-burrow-workspaces'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   // Prefix for session branches (e.g., "claude/" creates branches like "claude/{sessionId}")
   SESSION_BRANCH_PREFIX: z.string().default('claude/'),

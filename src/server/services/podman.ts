@@ -11,20 +11,13 @@ const log = createLogger('podman');
 const CLAUDE_CODE_IMAGE = env.CLAUDE_RUNNER_IMAGE;
 
 /**
- * Convert a container path to a host path for bind mounts.
- * In container-in-container setups, DATA_DIR is the path inside this container,
- * but we need the host path for bind mounts in session containers.
+ * Extract the session ID from a workspace path.
+ * Workspace paths are like /data/workspaces/{sessionId} or ./data/workspaces/{sessionId}
  */
-function toHostPath(containerPath: string): string {
-  if (!env.DATA_HOST_PATH) {
-    // No host path configured, use the path as-is (local dev mode)
-    return containerPath;
-  }
-  // Replace the DATA_DIR prefix with DATA_HOST_PATH
-  if (containerPath.startsWith(env.DATA_DIR)) {
-    return containerPath.replace(env.DATA_DIR, env.DATA_HOST_PATH);
-  }
-  return containerPath;
+function extractSessionId(workspacePath: string): string {
+  // Get the last path component (the session ID)
+  const parts = workspacePath.split('/').filter(Boolean);
+  return parts[parts.length - 1];
 }
 
 // Track last pull time per image to avoid pulling too frequently
@@ -209,13 +202,15 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     }
 
     // Build volume binds
-    // Use toHostPath() to convert container paths to host paths for container-in-container
+    // Mount the workspaces named volume - this is shared between service and runner containers
+    // The session's workspace is at /{sessionId} within the volume, mounted at /workspace in runner
+    const sessionId = extractSessionId(config.workspacePath);
     // Claude auth directory (e.g., /root/.claude) and config file (e.g., /root/.claude.json)
     const claudeAuthDir = env.CLAUDE_AUTH_PATH;
     const claudeConfigFile = `${claudeAuthDir}.json`; // e.g., /root/.claude.json
     const volumeArgs: string[] = [
       '-v',
-      `${toHostPath(config.workspacePath)}:/workspace`,
+      `${env.WORKSPACES_VOLUME}:/workspaces-volume`,
       '-v',
       `${claudeAuthDir}:/home/claudeuser/.claude`,
       '-v',
@@ -237,8 +232,12 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
       volumeArgs.push('-v', `${env.PODMAN_SOCKET_PATH}:/var/run/docker.sock`);
     }
 
-    // Working directory is the repo path inside the container workspace
-    const workingDir = config.repoPath ? `/workspace/${config.repoPath}` : '/workspace';
+    // Working directory is the repo path inside the session's workspace
+    // The volume is mounted at /workspaces-volume, and the session workspace is at /{sessionId}
+    // The repo is at /{sessionId}/{repoPath}
+    const workingDir = config.repoPath
+      ? `/workspaces-volume/${sessionId}/${config.repoPath}`
+      : `/workspaces-volume/${sessionId}`;
 
     log.info('Creating new container', {
       sessionId: config.sessionId,
