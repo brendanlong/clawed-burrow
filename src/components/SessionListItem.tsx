@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -17,43 +16,32 @@ import {
 } from '@/components/ui/alert-dialog';
 import { SessionStatusBadge } from '@/components/SessionStatusBadge';
 import { Spinner } from '@/components/ui/spinner';
+import type { Session } from '@/hooks/useSessionList';
+import type { SessionActions } from '@/hooks/useSessionActions';
 
-interface Session {
-  id: string;
-  name: string;
-  repoUrl: string;
-  branch: string;
-  status: string;
-  updatedAt: Date;
-}
-
-interface SessionListItemProps {
+export interface SessionListItemProps {
   session: Session;
-  onMutationSuccess: () => void;
+  actions: SessionActions;
 }
 
-export function SessionListItem({ session, onMutationSuccess }: SessionListItemProps) {
+/**
+ * Pure presentation component for a single session list item.
+ * Receives session data and actions as props, making it easily testable.
+ */
+export function SessionListItem({ session, actions }: SessionListItemProps) {
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
-
-  const startMutation = trpc.sessions.start.useMutation({
-    onSuccess: onMutationSuccess,
-  });
-
-  const stopMutation = trpc.sessions.stop.useMutation({
-    onSuccess: onMutationSuccess,
-  });
-
-  const archiveMutation = trpc.sessions.delete.useMutation({
-    onSuccess: () => {
-      setArchiveDialogOpen(false);
-      onMutationSuccess();
-    },
-  });
 
   const repoName = session.repoUrl.replace('https://github.com/', '').replace('.git', '');
 
-  const isArchiving = archiveMutation.isPending;
+  const isArchiving = actions.isArchiving(session.id);
+  const isStarting = actions.isStarting(session.id);
+  const isStopping = actions.isStopping(session.id);
   const isArchived = session.status === 'archived';
+
+  const handleArchive = () => {
+    actions.archive(session.id);
+    setArchiveDialogOpen(false);
+  };
 
   return (
     <li
@@ -84,20 +72,20 @@ export function SessionListItem({ session, onMutationSuccess }: SessionListItemP
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => startMutation.mutate({ sessionId: session.id })}
-                    disabled={startMutation.isPending}
+                    onClick={() => actions.start(session.id)}
+                    disabled={isStarting}
                   >
-                    {startMutation.isPending ? 'Starting...' : 'Start'}
+                    {isStarting ? 'Starting...' : 'Start'}
                   </Button>
                 )}
                 {session.status === 'running' && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => stopMutation.mutate({ sessionId: session.id })}
-                    disabled={stopMutation.isPending}
+                    onClick={() => actions.stop(session.id)}
+                    disabled={isStopping}
                   >
-                    {stopMutation.isPending ? 'Stopping...' : 'Stop'}
+                    {isStopping ? 'Stopping...' : 'Stop'}
                   </Button>
                 )}
                 {isArchiving ? (
@@ -122,11 +110,7 @@ export function SessionListItem({ session, onMutationSuccess }: SessionListItemP
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => archiveMutation.mutate({ sessionId: session.id })}
-                        >
-                          Archive
-                        </AlertDialogAction>
+                        <AlertDialogAction onClick={handleArchive}>Archive</AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>

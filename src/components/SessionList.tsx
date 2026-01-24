@@ -1,28 +1,32 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { SessionListItem } from '@/components/SessionListItem';
+import type { Session } from '@/hooks/useSessionList';
+import type { SessionActions } from '@/hooks/useSessionActions';
 
-interface Session {
-  id: string;
-  name: string;
-  repoUrl: string;
-  branch: string;
-  status: string;
-  updatedAt: Date;
+export interface SessionListProps {
+  sessions: Session[];
+  isLoading: boolean;
+  actions: SessionActions;
+  showArchived: boolean;
+  onToggleArchived: () => void;
 }
 
-export function SessionList() {
-  const [showArchived, setShowArchived] = useState(false);
-  const { data, isLoading, refetch } = trpc.sessions.list.useQuery({
-    includeArchived: showArchived,
-  });
-
+/**
+ * Pure presentation component for displaying a list of sessions.
+ * Receives data and actions as props, making it easily testable.
+ */
+export function SessionList({
+  sessions,
+  isLoading,
+  actions,
+  showArchived,
+  onToggleArchived,
+}: SessionListProps) {
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
@@ -30,8 +34,6 @@ export function SessionList() {
       </div>
     );
   }
-
-  const sessions: Session[] = data?.sessions ?? [];
 
   // Separate active and archived sessions for display
   const activeSessions = sessions.filter((s) => s.status !== 'archived');
@@ -48,7 +50,7 @@ export function SessionList() {
           <Button asChild>
             <Link href="/new">New Session</Link>
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setShowArchived(true)}>
+          <Button variant="ghost" size="sm" onClick={onToggleArchived}>
             Show archived sessions
           </Button>
         </CardContent>
@@ -63,7 +65,7 @@ export function SessionList() {
           {activeSessions.length > 0 ? (
             <ul className="divide-y divide-border">
               {activeSessions.map((session) => (
-                <SessionListItem key={session.id} session={session} onMutationSuccess={refetch} />
+                <SessionListItem key={session.id} session={session} actions={actions} />
               ))}
             </ul>
           ) : (
@@ -79,7 +81,7 @@ export function SessionList() {
 
       {/* Toggle for archived sessions */}
       <div className="flex justify-center">
-        <Button variant="ghost" size="sm" onClick={() => setShowArchived(!showArchived)}>
+        <Button variant="ghost" size="sm" onClick={onToggleArchived}>
           {showArchived ? 'Hide archived sessions' : 'Show archived sessions'}
         </Button>
       </div>
@@ -95,7 +97,7 @@ export function SessionList() {
           <CardContent className="p-0">
             <ul className="divide-y divide-border">
               {archivedSessions.map((session) => (
-                <SessionListItem key={session.id} session={session} onMutationSuccess={refetch} />
+                <SessionListItem key={session.id} session={session} actions={actions} />
               ))}
             </ul>
           </CardContent>

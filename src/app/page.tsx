@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Header } from '@/components/Header';
-import { SessionList } from '@/components/SessionList';
+import { SessionListContainer } from '@/components/SessionListContainer';
 import { Button } from '@/components/ui/button';
 
 export default function HomePage() {
@@ -21,7 +21,7 @@ export default function HomePage() {
               </Button>
             </div>
 
-            <SessionList />
+            <SessionListContainer />
           </div>
         </main>
       </div>

@@ -1,36 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { trpc } from '@/lib/trpc';
-
-// Mock the trpc module
-vi.mock('@/lib/trpc', () => ({
-  trpc: {
-    sessions: {
-      list: {
-        useQuery: vi.fn(),
-      },
-      start: {
-        useMutation: vi.fn(() => ({
-          mutate: vi.fn(),
-          isPending: false,
-        })),
-      },
-      stop: {
-        useMutation: vi.fn(() => ({
-          mutate: vi.fn(),
-          isPending: false,
-        })),
-      },
-      delete: {
-        useMutation: vi.fn(() => ({
-          mutate: vi.fn(),
-          isPending: false,
-        })),
-      },
-    },
-  },
-}));
+import { SessionList } from './SessionList';
+import type { Session } from '@/hooks/useSessionList';
+import type { SessionActions } from '@/hooks/useSessionActions';
 
 // Mock next/link
 vi.mock('next/link', () => ({
@@ -39,40 +11,31 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-// Import component after mocks are set up
-import { SessionList } from './SessionList';
-
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-      },
-    },
-  });
-  return function Wrapper({ children }: { children: React.ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+function createMockActions(overrides: Partial<SessionActions> = {}): SessionActions {
+  return {
+    start: vi.fn(),
+    stop: vi.fn(),
+    archive: vi.fn(),
+    isStarting: () => false,
+    isStopping: () => false,
+    isArchiving: () => false,
+    ...overrides,
   };
 }
 
 describe('SessionList', () => {
-  const mockUseQuery = vi.mocked(trpc.sessions.list.useQuery);
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   describe('loading state', () => {
     it('shows spinner while loading', () => {
-      mockUseQuery.mockReturnValue({
-        data: undefined,
-        isLoading: true,
-        refetch: vi.fn(),
-      } as unknown as ReturnType<typeof trpc.sessions.list.useQuery>);
+      render(
+        <SessionList
+          sessions={[]}
+          isLoading={true}
+          actions={createMockActions()}
+          showArchived={false}
+          onToggleArchived={vi.fn()}
+        />
+      );
 
-      render(<SessionList />, { wrapper: createWrapper() });
-
-      // Check for spinner (via role or class)
       const spinner = document.querySelector('[class*="animate-spin"]');
       expect(spinner).toBeInTheDocument();
     });
@@ -80,26 +43,30 @@ describe('SessionList', () => {
 
   describe('empty state', () => {
     it('shows empty state message when no sessions', () => {
-      mockUseQuery.mockReturnValue({
-        data: { sessions: [] },
-        isLoading: false,
-        refetch: vi.fn(),
-      } as unknown as ReturnType<typeof trpc.sessions.list.useQuery>);
-
-      render(<SessionList />, { wrapper: createWrapper() });
+      render(
+        <SessionList
+          sessions={[]}
+          isLoading={false}
+          actions={createMockActions()}
+          showArchived={false}
+          onToggleArchived={vi.fn()}
+        />
+      );
 
       expect(screen.getByText('No sessions yet')).toBeInTheDocument();
       expect(screen.getByText('Get started by creating a new session.')).toBeInTheDocument();
     });
 
     it('shows "New Session" link in empty state', () => {
-      mockUseQuery.mockReturnValue({
-        data: { sessions: [] },
-        isLoading: false,
-        refetch: vi.fn(),
-      } as unknown as ReturnType<typeof trpc.sessions.list.useQuery>);
-
-      render(<SessionList />, { wrapper: createWrapper() });
+      render(
+        <SessionList
+          sessions={[]}
+          isLoading={false}
+          actions={createMockActions()}
+          showArchived={false}
+          onToggleArchived={vi.fn()}
+        />
+      );
 
       const newSessionLink = screen.getByRole('link', { name: /new session/i });
       expect(newSessionLink).toBeInTheDocument();
@@ -108,7 +75,7 @@ describe('SessionList', () => {
   });
 
   describe('sessions list', () => {
-    const mockSessions = [
+    const mockSessions: Session[] = [
       {
         id: 'session-1',
         name: 'Test Session 1',
@@ -128,26 +95,30 @@ describe('SessionList', () => {
     ];
 
     it('renders list of sessions', () => {
-      mockUseQuery.mockReturnValue({
-        data: { sessions: mockSessions },
-        isLoading: false,
-        refetch: vi.fn(),
-      } as unknown as ReturnType<typeof trpc.sessions.list.useQuery>);
-
-      render(<SessionList />, { wrapper: createWrapper() });
+      render(
+        <SessionList
+          sessions={mockSessions}
+          isLoading={false}
+          actions={createMockActions()}
+          showArchived={false}
+          onToggleArchived={vi.fn()}
+        />
+      );
 
       expect(screen.getByText('Test Session 1')).toBeInTheDocument();
       expect(screen.getByText('Test Session 2')).toBeInTheDocument();
     });
 
     it('links to individual session pages', () => {
-      mockUseQuery.mockReturnValue({
-        data: { sessions: mockSessions },
-        isLoading: false,
-        refetch: vi.fn(),
-      } as unknown as ReturnType<typeof trpc.sessions.list.useQuery>);
-
-      render(<SessionList />, { wrapper: createWrapper() });
+      render(
+        <SessionList
+          sessions={mockSessions}
+          isLoading={false}
+          actions={createMockActions()}
+          showArchived={false}
+          onToggleArchived={vi.fn()}
+        />
+      );
 
       const sessionLinks = screen.getAllByRole('link');
       const session1Link = sessionLinks.find((link) =>
@@ -157,44 +128,18 @@ describe('SessionList', () => {
     });
 
     it('renders sessions in order', () => {
-      mockUseQuery.mockReturnValue({
-        data: { sessions: mockSessions },
-        isLoading: false,
-        refetch: vi.fn(),
-      } as unknown as ReturnType<typeof trpc.sessions.list.useQuery>);
-
-      render(<SessionList />, { wrapper: createWrapper() });
+      render(
+        <SessionList
+          sessions={mockSessions}
+          isLoading={false}
+          actions={createMockActions()}
+          showArchived={false}
+          onToggleArchived={vi.fn()}
+        />
+      );
 
       const sessionNames = screen.getAllByRole('listitem');
       expect(sessionNames).toHaveLength(2);
-    });
-  });
-
-  describe('data handling', () => {
-    it('handles undefined data gracefully', () => {
-      mockUseQuery.mockReturnValue({
-        data: undefined,
-        isLoading: false,
-        refetch: vi.fn(),
-      } as unknown as ReturnType<typeof trpc.sessions.list.useQuery>);
-
-      render(<SessionList />, { wrapper: createWrapper() });
-
-      // Should show empty state when data is undefined
-      expect(screen.getByText('No sessions yet')).toBeInTheDocument();
-    });
-
-    it('handles null sessions array gracefully', () => {
-      mockUseQuery.mockReturnValue({
-        data: { sessions: null },
-        isLoading: false,
-        refetch: vi.fn(),
-      } as unknown as ReturnType<typeof trpc.sessions.list.useQuery>);
-
-      render(<SessionList />, { wrapper: createWrapper() });
-
-      // Should show empty state
-      expect(screen.getByText('No sessions yet')).toBeInTheDocument();
     });
   });
 });
