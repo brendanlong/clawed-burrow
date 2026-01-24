@@ -473,8 +473,16 @@ async function copyClaudeAuth(containerId: string): Promise<void> {
     }
   }
 
-  // Copy the .claude.json file (use sudo to read files with restricted permissions)
-  await runPodman(['cp', claudeConfigFile, `${containerId}:/home/claudeuser/.claude.json`], true);
+  // Try to copy the .claude.json file (optional - contains cached settings, not essential for auth)
+  // This file is a sibling of .claude directory on the host, so it may not be mounted
+  try {
+    await runPodman(['cp', claudeConfigFile, `${containerId}:/home/claudeuser/.claude.json`], true);
+  } catch (error) {
+    log.debug('Optional .claude.json file not found', {
+      claudeConfigFile,
+      error: toError(error).message,
+    });
+  }
 
   // Fix ownership (podman cp preserves host ownership which may not match container user)
   await runPodman([
