@@ -33,6 +33,13 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((val) => val === 'true' || val === '1'),
+  // Explicit Claude config JSON for MCP servers
+  // If set, this JSON will be written to ~/.claude.json in runner containers
+  // instead of copying the host's .claude.json (which may contain Claude.ai's
+  // automatically configured MCP server proxies that aren't appropriate for
+  // --dangerously-skip-permissions mode)
+  // Example: {"mcpServers":{"memory":{"command":"npx","args":["@anthropic/mcp-server-memory"]}}}
+  CLAUDE_CONFIG_JSON: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
