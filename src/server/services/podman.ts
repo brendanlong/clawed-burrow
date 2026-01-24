@@ -441,8 +441,9 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
  * 2. Prevent agents from modifying the auth config
  * 3. Enable faster container startup (no --userns=keep-id needed for this)
  *
- * Uses sudo for the copy because in containerized deployments, the service container
- * may not have permission to read files like .credentials.json (which have 600 permissions).
+ * Uses sudo for the copy only when running inside a container, because the service
+ * container may not have permission to read files like .credentials.json (which have
+ * 600 permissions on the host). In local dev, the current user owns the files.
  *
  * Only copies essential auth files, not the entire .claude directory (which contains
  * large directories like file-history that aren't needed and can cause copy errors).
@@ -450,6 +451,10 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
 async function copyClaudeAuth(containerId: string): Promise<void> {
   const claudeAuthDir = env.CLAUDE_AUTH_PATH;
   const claudeConfigFile = `${claudeAuthDir}.json`;
+
+  // Only use sudo when running inside a container (where bind-mounted files may have
+  // different ownership). In local dev, the current user can read their own files.
+  const useSudo = isRunningInContainer();
 
   // Create the .claude directory in the container
   await runPodman(['exec', containerId, 'mkdir', '-p', '/home/claudeuser/.claude']);
@@ -461,8 +466,8 @@ async function copyClaudeAuth(containerId: string): Promise<void> {
     const srcPath = `${claudeAuthDir}/${file}`;
     const destPath = `${containerId}:/home/claudeuser/.claude/${file}`;
     try {
-      // Use sudo to read files with restricted permissions (like .credentials.json with 600)
-      await runPodman(['cp', srcPath, destPath], true);
+      // Use sudo in container deployments to read files with restricted permissions
+      await runPodman(['cp', srcPath, destPath], useSudo);
     } catch (error) {
       // settings.json may not exist, that's ok
       if (file !== '.credentials.json') {
@@ -477,7 +482,10 @@ async function copyClaudeAuth(containerId: string): Promise<void> {
   // This file is a sibling of .claude directory on the host, so it needs to be mounted separately
   // at /claude-auth.json (see README for the mount command)
   try {
-    await runPodman(['cp', claudeConfigFile, `${containerId}:/home/claudeuser/.claude.json`], true);
+    await runPodman(
+      ['cp', claudeConfigFile, `${containerId}:/home/claudeuser/.claude.json`],
+      useSudo
+    );
   } catch (error) {
     log.warn('.claude.json file not found - MCP integrations will not work', {
       claudeConfigFile,
