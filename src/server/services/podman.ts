@@ -46,11 +46,15 @@ const podmanEnv: NodeJS.ProcessEnv = isRunningInContainer()
 
 /**
  * Run a podman command and return a promise that resolves with stdout.
+ * @param args - Arguments to pass to podman
+ * @param useSudo - Run with sudo (needed when reading files with restricted permissions in containerized deployments)
  */
-async function runPodman(args: string[]): Promise<string> {
+async function runPodman(args: string[], useSudo = false): Promise<string> {
   return new Promise((resolve, reject) => {
-    log.debug('runPodman: Executing', { args });
-    const proc = spawn('podman', args, { env: podmanEnv });
+    const command = useSudo ? 'sudo' : 'podman';
+    const finalArgs = useSudo ? ['podman', ...args] : args;
+    log.debug('runPodman: Executing', { args: finalArgs, useSudo });
+    const proc = spawn(command, finalArgs, { env: podmanEnv });
     let stdout = '';
     let stderr = '';
 
@@ -66,7 +70,7 @@ async function runPodman(args: string[]): Promise<string> {
       if (code === 0) {
         resolve(stdout);
       } else {
-        log.debug('runPodman: Command failed', { args, code, stderr });
+        log.debug('runPodman: Command failed', { args: finalArgs, code, stderr });
         reject(new Error(`podman command failed with code ${code}: ${stderr}`));
       }
     });
@@ -423,16 +427,19 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
  * 1. Avoid permission issues with rootless Podman
  * 2. Prevent agents from modifying the auth config
  * 3. Enable faster container startup (no --userns=keep-id needed for this)
+ *
+ * Uses sudo for the copy because in containerized deployments, the service container
+ * may not have permission to read files like .credentials.json (which have 600 permissions).
  */
 async function copyClaudeAuth(containerId: string): Promise<void> {
   const claudeAuthDir = env.CLAUDE_AUTH_PATH;
   const claudeConfigFile = `${claudeAuthDir}.json`;
 
-  // Copy the .claude directory
-  await runPodman(['cp', claudeAuthDir, `${containerId}:/home/claudeuser/.claude`]);
+  // Copy the .claude directory (use sudo to read files with restricted permissions)
+  await runPodman(['cp', claudeAuthDir, `${containerId}:/home/claudeuser/.claude`], true);
 
-  // Copy the .claude.json file
-  await runPodman(['cp', claudeConfigFile, `${containerId}:/home/claudeuser/.claude.json`]);
+  // Copy the .claude.json file (use sudo to read files with restricted permissions)
+  await runPodman(['cp', claudeConfigFile, `${containerId}:/home/claudeuser/.claude.json`], true);
 
   // Fix ownership (podman cp preserves host ownership which may not match container user)
   await runPodman([
