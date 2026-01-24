@@ -70,6 +70,9 @@ function createMockProcess(): ChildProcess & {
   (stderr as unknown as { pipe: (dest: NodeJS.WritableStream) => NodeJS.WritableStream }).pipe =
     vi.fn((dest) => dest);
 
+  // Add mock unref method for background processes
+  (proc as unknown as { unref: () => void }).unref = vi.fn();
+
   proc.stdout = stdout as unknown as typeof proc.stdout;
   proc.stderr = stderr as unknown as typeof proc.stderr;
   return proc;

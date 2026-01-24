@@ -118,6 +118,34 @@ async function runPodmanIgnoreErrors(args: string[]): Promise<string> {
 }
 
 /**
+ * Run a podman command in the background without waiting for it to complete.
+ * Fire-and-forget - no result is returned.
+ * Useful for cleanup operations that don't need to block.
+ */
+function runPodmanBackground(args: string[]): void {
+  log.debug('runPodmanBackground: Starting', { args });
+  const proc = spawn('podman', args, {
+    env: podmanEnv,
+    stdio: 'ignore',
+    detached: true,
+  });
+  // unref() allows the parent process to exit without waiting for this child
+  proc.unref();
+}
+
+/**
+ * Clean up a temporary container in the background.
+ * Uses SIGKILL for instant termination since we don't need graceful shutdown.
+ * This avoids the 10-second default stop timeout.
+ */
+function cleanupContainerBackground(containerId: string): void {
+  log.debug('cleanupContainerBackground: Cleaning up', { containerId });
+  // Use rm -f which sends SIGKILL and removes in one step
+  // Much faster than stop (which waits for graceful shutdown) + rm
+  runPodmanBackground(['rm', '-f', containerId]);
+}
+
+/**
  * Ensure an image is up-to-date by pulling it.
  * Pulls are rate-limited to once per 5 minutes per image to avoid excessive pulls.
  * Set SKIP_IMAGE_PULL=true to skip pulling entirely (useful for testing local builds).
@@ -205,9 +233,8 @@ async function updateGitCache(repoFullName: string, githubToken?: string): Promi
       '-w',
       '/cache',
       CLAUDE_CODE_IMAGE,
-      'tail',
-      '-f',
-      '/dev/null',
+      'sleep',
+      'infinity',
     ];
 
     const containerId = (await runPodman(createArgs)).trim();
@@ -249,9 +276,9 @@ async function updateGitCache(repoFullName: string, githubToken?: string): Promi
       log.info('Git cache updated successfully', { repoFullName });
       return true;
     } finally {
-      // Always clean up the temporary container
-      await runPodmanIgnoreErrors(['stop', containerId]);
-      await runPodmanIgnoreErrors(['rm', '-f', containerId]);
+      // Clean up the temporary container in the background
+      // This avoids the ~10 second stop timeout since we use rm -f (SIGKILL)
+      cleanupContainerBackground(containerId);
     }
   } catch (error) {
     log.warn(
@@ -327,9 +354,8 @@ export async function cloneRepoInVolume(config: CloneConfig): Promise<CloneResul
       '-w',
       '/workspace',
       CLAUDE_CODE_IMAGE,
-      'tail',
-      '-f',
-      '/dev/null',
+      'sleep',
+      'infinity',
     ];
 
     const containerId = (await runPodman(createArgs)).trim();
@@ -389,9 +415,9 @@ export async function cloneRepoInVolume(config: CloneConfig): Promise<CloneResul
 
       return { repoPath: repoName };
     } finally {
-      // Always clean up the temporary container
-      await runPodmanIgnoreErrors(['stop', containerId]);
-      await runPodmanIgnoreErrors(['rm', '-f', containerId]);
+      // Clean up the temporary container in the background
+      // This avoids the ~10 second stop timeout since we use rm -f (SIGKILL)
+      cleanupContainerBackground(containerId);
     }
   } catch (error) {
     log.error('Failed to clone repo in volume', toError(error), {
@@ -518,9 +544,8 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
       ...envArgs,
       ...volumeArgs,
       CLAUDE_CODE_IMAGE,
-      'tail',
-      '-f',
-      '/dev/null', // Keep container running
+      'sleep',
+      'infinity', // Keep container running (responds to SIGTERM unlike tail -f)
     ];
 
     const containerId = (await runPodman(createArgs)).trim();
@@ -530,28 +555,31 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     await runPodman(['start', containerId]);
     log.info('Container started', { sessionId: config.sessionId, containerId });
 
-    // Copy Claude auth files into the container (instead of bind mounting)
-    // This avoids permission issues and prevents agents from modifying auth config
-    await copyClaudeAuth(containerId);
+    // Configure the container - run independent setup tasks in parallel for speed
+    // These tasks don't depend on each other and can all run concurrently
+    const setupTasks: Promise<void>[] = [
+      // Copy Claude auth files into the container (instead of bind mounting)
+      // This avoids permission issues and prevents agents from modifying auth config
+      copyClaudeAuth(containerId),
+      // Configure pnpm to use the shared store volume
+      configurePnpmStore(containerId),
+      // Configure Gradle to use the shared cache volume
+      configureGradleCache(containerId),
+      // Fix sudo permissions (rootless Podman without --userns=keep-id can break setuid)
+      fixSudoPermissions(containerId),
+    ];
 
     // Configure git credential helper if token is provided
     if (config.githubToken) {
-      await configureGitCredentials(containerId);
+      setupTasks.push(configureGitCredentials(containerId));
     }
-
-    // Configure pnpm to use the shared store volume
-    await configurePnpmStore(containerId);
-
-    // Configure Gradle to use the shared cache volume
-    await configureGradleCache(containerId);
 
     // Fix podman socket permissions if mounted
     if (env.PODMAN_SOCKET_PATH) {
-      await fixPodmanSocketPermissions(containerId);
+      setupTasks.push(fixPodmanSocketPermissions(containerId));
     }
 
-    // Fix sudo permissions (rootless Podman without --userns=keep-id can break setuid)
-    await fixSudoPermissions(containerId);
+    await Promise.all(setupTasks);
 
     return containerId;
   } catch (error) {
