@@ -130,6 +130,7 @@ Run the container:
 podman run -d \
   --name clawed-burrow \
   --replace \
+  --userns=keep-id \
   --label io.containers.autoupdate=registry \
   -p 3000:3000 \
   -e DATABASE_URL=file:/data/db/prod.db \
