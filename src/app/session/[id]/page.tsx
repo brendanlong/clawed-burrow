@@ -23,13 +23,42 @@ interface Message {
 const MESSAGE_PAGE_SIZE = 20;
 
 /**
+ * Hook to refetch data when the app regains visibility or network reconnects.
+ * This handles cases where SSE connection was lost and the UI shows stale state.
+ */
+function useRefetchOnReconnect(refetch: () => void) {
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refetch();
+      }
+    };
+
+    const handleOnline = () => {
+      refetch();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [refetch]);
+}
+
+/**
  * Hook for managing session state: fetching session data, SSE updates, and start/stop mutations.
  */
 function useSessionState(sessionId: string) {
   const utils = trpc.useUtils();
 
   // Fetch session details
-  const { data: sessionData, isLoading } = trpc.sessions.get.useQuery({ sessionId });
+  const { data: sessionData, isLoading, refetch } = trpc.sessions.get.useQuery({ sessionId });
+
+  // Refetch session data when app regains visibility or network reconnects
+  useRefetchOnReconnect(refetch);
 
   // Subscribe to session updates via SSE - update cache directly
   trpc.sse.onSessionUpdate.useSubscription(
@@ -265,7 +294,15 @@ function useClaudeState(sessionId: string) {
   const [runningOverride, setRunningOverride] = useState<boolean | null>(null);
 
   // Initial fetch of Claude running state
-  const { data: runningData } = trpc.claude.isRunning.useQuery({ sessionId });
+  const { data: runningData, refetch } = trpc.claude.isRunning.useQuery({ sessionId });
+
+  // Refetch and reset override when app regains visibility or network reconnects
+  const refetchAndReset = useCallback(() => {
+    // Reset override so we use fresh data from the query
+    setRunningOverride(null);
+    refetch();
+  }, [refetch]);
+  useRefetchOnReconnect(refetchAndReset);
 
   // Subscribe to Claude running state via SSE
   trpc.sse.onClaudeRunning.useSubscription(
