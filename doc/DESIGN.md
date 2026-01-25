@@ -277,7 +277,7 @@ claude.getHistory({
 - Session's volume mounted at `/workspace`
 - Working directory set to `/workspace/{repo-name}` (the cloned repo)
 - GPU access via CDI (`--device nvidia.com/gpu=all`)
-- Claude auth copied into container (not bind mounted)
+- Claude credentials file bind-mounted from host (allows rescuing sessions if auth expires)
 - Podman socket mounted (for podman-in-podman)
 - GITHUB_TOKEN env var for push/pull access
 - Git credential helper configured automatically
@@ -408,7 +408,7 @@ The application uses Podman CLI commands to manage containers, routing them thro
 Runner containers are created with:
 
 - **Workspace**: Session's dedicated volume mounted at `/workspace`
-- **Claude auth**: Copied into container after start (not bind-mounted, for security and to avoid permission issues)
+- **Claude credentials**: Credentials file bind-mounted from host as read-only (allows auth updates to propagate to running containers)
 - **Podman socket**: Bind-mounted for container-in-container support (read-only)
 - **pnpm store**: Named volume mounted at `/pnpm-store` for shared package cache
 - **Gradle cache**: Named volume mounted at `/gradle-cache` for shared build cache
@@ -425,6 +425,11 @@ async function startSessionContainer(session: Session, githubToken?: string): Pr
     'clawed-burrow-pnpm-store:/pnpm-store',
     '-v',
     'clawed-burrow-gradle-cache:/gradle-cache',
+    // Claude credentials file bind-mounted so auth updates propagate to running containers
+    // Only the credentials file is mounted (not the whole .claude directory) because
+    // Claude Code needs to write to other files/subdirectories during operation
+    '-v',
+    `${CLAUDE_AUTH_PATH}/.credentials.json:/home/claudeuser/.claude/.credentials.json:ro`,
   ];
 
   // Mount host's podman socket for container-in-container support (read-only)
@@ -449,9 +454,6 @@ async function startSessionContainer(session: Session, githubToken?: string): Pr
 
   const containerId = await runPodman(createArgs);
   await runPodman(['start', containerId]);
-
-  // Copy Claude auth files into container (instead of bind mounting)
-  await runPodman(['cp', CLAUDE_AUTH_PATH, `${containerId}:/home/claudeuser/.claude`]);
 
   // Handle .claude.json - only write if CLAUDE_CONFIG_JSON is explicitly set.
   // We do NOT copy from host by default because the host's file may contain
@@ -711,7 +713,7 @@ pnpm test:coverage # With coverage report
 
 1. **Container reuse** — Keep one container per session always running, or start/stop on demand? Leaning toward always-running for simplicity (low resource cost when idle).
 
-2. **Claude auth refresh** — Monitor for auth failures and surface in UI, or try to automate re-auth? Starting with manual re-auth on host seems fine.
+2. **Claude auth refresh** — Auth is bind-mounted from the host, so updates on the host are automatically reflected in running containers. Manual re-auth on host is sufficient.
 
 3. **Message retention** — Keep forever, or prune old sessions? Probably configurable per-session or global setting.
 

@@ -516,6 +516,15 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
       volumeArgs.push('-v', `${env.PODMAN_SOCKET_PATH}:/var/run/docker.sock`);
     }
 
+    // Bind-mount Claude credentials file so auth updates on host are reflected in running containers
+    // This allows rescuing sessions if auth expires without needing to restart the container
+    // We only mount the credentials file (not the whole .claude directory) because Claude Code
+    // needs to write to other files/subdirectories in .claude during operation
+    volumeArgs.push(
+      '-v',
+      `${env.CLAUDE_AUTH_PATH}/.credentials.json:/home/claudeuser/.claude/.credentials.json:ro`
+    );
+
     // Working directory is the repo path inside the session's workspace
     // The session's workspace is mounted at /workspace, so the repo is at /workspace/{repoPath}
     const workingDir = config.repoPath ? `/workspace/${config.repoPath}` : '/workspace';
@@ -558,8 +567,7 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     // Configure the container - run independent setup tasks in parallel for speed
     // These tasks don't depend on each other and can all run concurrently
     const setupTasks: Promise<void>[] = [
-      // Copy Claude auth files into the container (instead of bind mounting)
-      // This avoids permission issues and prevents agents from modifying auth config
+      // Set up Claude config (credentials file is bind-mounted, this copies settings.json and handles .claude.json)
       copyClaudeAuth(containerId),
       // Configure pnpm to use the shared store volume
       configurePnpmStore(containerId),
@@ -593,18 +601,20 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
 }
 
 /**
- * Copy Claude auth files into the container.
- * We copy instead of bind mounting to:
- * 1. Avoid permission issues with rootless Podman
- * 2. Prevent agents from modifying the auth config
- * 3. Enable faster container startup (no --userns=keep-id needed for this)
+ * Set up Claude config in the container.
+ *
+ * The .credentials.json file is bind-mounted from the host as read-only,
+ * so auth updates on the host are automatically reflected in running containers.
+ * This allows rescuing sessions if auth expires without needing to restart.
+ *
+ * This function handles:
+ * 1. Copying settings.json if it exists (user preferences, not bind-mounted)
+ * 2. Writing .claude.json only if CLAUDE_CONFIG_JSON is explicitly set
+ *    (host's file may contain MCP server proxies inappropriate for containers)
  *
  * Uses sudo for the copy only when running inside a container, because the service
- * container may not have permission to read files like .credentials.json (which have
- * 600 permissions on the host). In local dev, the current user owns the files.
- *
- * Only copies essential auth files, not the entire .claude directory (which contains
- * large directories like file-history that aren't needed and can cause copy errors).
+ * container may not have permission to read files like settings.json (which may have
+ * restricted permissions on the host). In local dev, the current user owns the files.
  */
 async function copyClaudeAuth(containerId: string): Promise<void> {
   const claudeAuthDir = env.CLAUDE_AUTH_PATH;
@@ -613,26 +623,24 @@ async function copyClaudeAuth(containerId: string): Promise<void> {
   // different ownership). In local dev, the current user can read their own files.
   const useSudo = isRunningInContainer();
 
-  // Create the .claude directory in the container
-  await runPodman(['exec', containerId, 'mkdir', '-p', '/home/claudeuser/.claude']);
-
-  // Essential files for Claude auth - copy only what's needed
-  const essentialFiles = ['.credentials.json', 'settings.json'];
-
-  for (const file of essentialFiles) {
-    const srcPath = `${claudeAuthDir}/${file}`;
-    const destPath = `${containerId}:/home/claudeuser/.claude/${file}`;
-    try {
-      // Use sudo in container deployments to read files with restricted permissions
-      await runPodman(['cp', srcPath, destPath], useSudo);
-    } catch (error) {
-      // settings.json may not exist, that's ok
-      if (file !== '.credentials.json') {
-        log.debug('Optional auth file not found', { file, error: toError(error).message });
-      } else {
-        throw error;
-      }
-    }
+  // Copy settings.json if it exists (user preferences, not security-critical)
+  try {
+    const srcPath = `${claudeAuthDir}/settings.json`;
+    const destPath = `${containerId}:/home/claudeuser/.claude/settings.json`;
+    await runPodman(['cp', srcPath, destPath], useSudo);
+    // Fix ownership after copy
+    await runPodman([
+      'exec',
+      '--user',
+      'root',
+      containerId,
+      'chown',
+      'claudeuser:claudeuser',
+      '/home/claudeuser/.claude/settings.json',
+    ]);
+  } catch (error) {
+    // settings.json may not exist, that's ok
+    log.debug('Optional settings.json not found', { error: toError(error).message });
   }
 
   // Handle .claude.json (contains MCP configs and other settings)
@@ -650,25 +658,22 @@ async function copyClaudeAuth(containerId: string): Promise<void> {
       '-c',
       `cat > /home/claudeuser/.claude.json << 'CONFIGEOF'\n${env.CLAUDE_CONFIG_JSON}\nCONFIGEOF`,
     ]);
+    // Fix ownership
+    await runPodman([
+      'exec',
+      '--user',
+      'root',
+      containerId,
+      'chown',
+      'claudeuser:claudeuser',
+      '/home/claudeuser/.claude.json',
+    ]);
     log.info('Wrote explicit Claude config JSON', { containerId });
   } else {
     log.debug('CLAUDE_CONFIG_JSON not set - Claude Code will create .claude.json on first run');
   }
 
-  // Fix ownership (podman cp preserves host ownership which may not match container user)
-  // Use sh -c with conditional to handle case where .claude.json might not exist
-  await runPodman([
-    'exec',
-    '--user',
-    'root',
-    containerId,
-    'sh',
-    '-c',
-    'chown -R claudeuser:claudeuser /home/claudeuser/.claude && ' +
-      '[ -f /home/claudeuser/.claude.json ] && chown claudeuser:claudeuser /home/claudeuser/.claude.json || true',
-  ]);
-
-  log.info('Set up Claude auth files', { containerId });
+  log.info('Claude auth setup complete (credentials bind-mounted from host)', { containerId });
 }
 
 async function configureGitCredentials(containerId: string): Promise<void> {
