@@ -58,6 +58,229 @@ CONTAINER ISSUE REPORTING: This container should have all standard development t
 
 const log = createLogger('claude-runner');
 
+// =============================================================================
+// Partial Message Tracking for Stream Events
+// =============================================================================
+
+/**
+ * Represents a content block being accumulated from stream events.
+ * Tracks text or tool_use blocks as they stream in.
+ */
+interface PartialContentBlock {
+  type: 'text' | 'tool_use';
+  // For text blocks
+  text?: string;
+  // For tool_use blocks
+  id?: string;
+  name?: string;
+  input?: string; // JSON string being accumulated
+}
+
+/**
+ * Tracks a partial message being built from stream events.
+ * Used to accumulate content_block_delta events until the message is complete.
+ */
+interface PartialMessage {
+  messageId: string; // The msg_xxx ID from message_start
+  sessionId: string;
+  sequence: number;
+  model?: string;
+  contentBlocks: PartialContentBlock[];
+  lastUpdated: number;
+}
+
+/**
+ * Tracks partial messages per session.
+ * Key is the sessionId, value is the current partial message being accumulated.
+ */
+const partialMessages = new Map<string, PartialMessage>();
+
+/**
+ * Process a stream_event line and update the partial message state.
+ * Returns a partial assistant message if there's content to display, null otherwise.
+ */
+function processStreamEvent(
+  sessionId: string,
+  parsed: { type: 'stream_event'; event: unknown; session_id: string; uuid: string }
+): { messageId: string; content: unknown } | null {
+  const event = parsed.event as Record<string, unknown>;
+  const eventType = event.type as string;
+
+  switch (eventType) {
+    case 'message_start': {
+      // Start of a new message - initialize tracking
+      const message = event.message as Record<string, unknown>;
+      const messageId = message.id as string;
+      const model = message.model as string | undefined;
+
+      partialMessages.set(sessionId, {
+        messageId,
+        sessionId,
+        sequence: -1, // Will be assigned when we emit
+        model,
+        contentBlocks: [],
+        lastUpdated: Date.now(),
+      });
+      return null;
+    }
+
+    case 'content_block_start': {
+      // Start of a new content block (text or tool_use)
+      const partial = partialMessages.get(sessionId);
+      if (!partial) return null;
+
+      const index = event.index as number;
+      const contentBlock = event.content_block as Record<string, unknown>;
+      const blockType = contentBlock.type as string;
+
+      // Ensure array is large enough
+      while (partial.contentBlocks.length <= index) {
+        partial.contentBlocks.push({ type: 'text', text: '' });
+      }
+
+      if (blockType === 'text') {
+        partial.contentBlocks[index] = {
+          type: 'text',
+          text: (contentBlock.text as string) || '',
+        };
+      } else if (blockType === 'tool_use') {
+        partial.contentBlocks[index] = {
+          type: 'tool_use',
+          id: contentBlock.id as string,
+          name: contentBlock.name as string,
+          input: '',
+        };
+      }
+
+      partial.lastUpdated = Date.now();
+      return buildPartialAssistantMessage(partial);
+    }
+
+    case 'content_block_delta': {
+      // Incremental update to a content block
+      const partial = partialMessages.get(sessionId);
+      if (!partial) return null;
+
+      const index = event.index as number;
+      const delta = event.delta as Record<string, unknown>;
+      const deltaType = delta.type as string;
+
+      if (index >= partial.contentBlocks.length) return null;
+
+      const block = partial.contentBlocks[index];
+
+      if (deltaType === 'text_delta' && block.type === 'text') {
+        block.text = (block.text || '') + (delta.text as string);
+      } else if (deltaType === 'input_json_delta' && block.type === 'tool_use') {
+        block.input = (block.input || '') + (delta.partial_json as string);
+      }
+
+      partial.lastUpdated = Date.now();
+      return buildPartialAssistantMessage(partial);
+    }
+
+    case 'content_block_stop': {
+      // A content block is complete - emit current state
+      const partial = partialMessages.get(sessionId);
+      if (!partial) return null;
+      return buildPartialAssistantMessage(partial);
+    }
+
+    case 'message_delta': {
+      // Message-level update (e.g., stop_reason) - not needed for display
+      return null;
+    }
+
+    case 'message_stop': {
+      // Message complete - clean up partial state
+      // The full message will come in a separate 'assistant' event
+      partialMessages.delete(sessionId);
+      return null;
+    }
+
+    default:
+      return null;
+  }
+}
+
+/**
+ * Build a partial assistant message from accumulated content blocks.
+ * This creates a message structure that matches the final assistant message format.
+ */
+function buildPartialAssistantMessage(
+  partial: PartialMessage
+): { messageId: string; content: unknown } | null {
+  // Only emit if we have some content
+  const hasContent = partial.contentBlocks.some((block) => {
+    if (block.type === 'text') return block.text && block.text.length > 0;
+    if (block.type === 'tool_use') return block.name; // Tool use just needs name to be useful
+    return false;
+  });
+
+  if (!hasContent) return null;
+
+  // Build content blocks in the format expected by the frontend
+  const contentBlocks = partial.contentBlocks
+    .map((block) => {
+      if (block.type === 'text') {
+        return { type: 'text', text: block.text || '' };
+      } else if (block.type === 'tool_use') {
+        // Parse the accumulated JSON input, or use empty object if incomplete
+        let input: Record<string, unknown> = {};
+        if (block.input) {
+          try {
+            input = JSON.parse(block.input);
+          } catch {
+            // JSON is incomplete - use what we have as a string for display
+            input = { _partial: block.input };
+          }
+        }
+        return {
+          type: 'tool_use',
+          id: block.id,
+          name: block.name,
+          input,
+        };
+      }
+      return null;
+    })
+    .filter(Boolean);
+
+  const content = {
+    type: 'assistant',
+    message: {
+      model: partial.model,
+      id: partial.messageId,
+      type: 'message',
+      role: 'assistant',
+      content: contentBlocks,
+      stop_reason: null,
+    },
+    session_id: partial.sessionId,
+    uuid: partial.messageId, // Use messageId as uuid for consistency
+    _partial: true, // Mark as partial for debugging/display purposes
+  };
+
+  return { messageId: partial.messageId, content };
+}
+
+/**
+ * Check if a parsed JSON object is a stream_event.
+ */
+function isStreamEvent(
+  parsed: unknown
+): parsed is { type: 'stream_event'; event: unknown; session_id: string; uuid: string } {
+  return (
+    typeof parsed === 'object' &&
+    parsed !== null &&
+    (parsed as Record<string, unknown>).type === 'stream_event'
+  );
+}
+
+// =============================================================================
+// End of Partial Message Tracking
+// =============================================================================
+
 /**
  * Create and save a system error message for display to the user.
  * Used when Claude process fails unexpectedly.
@@ -195,7 +418,7 @@ type SaveMessageResult =
         createdAt: Date;
       };
     }
-  | { saved: false; reason: 'parse_error' | 'duplicate' };
+  | { saved: false; reason: 'parse_error' | 'duplicate' | 'stream_event' };
 
 /**
  * Parse a JSON line and save it as a message if it doesn't already exist.
@@ -213,11 +436,30 @@ async function saveMessageIfNotExists(
     return { saved: false, reason: 'parse_error' };
   }
 
+  // Stream events are not saved to DB - they're handled separately for partial updates
+  if (isStreamEvent(parsed)) {
+    return { saved: false, reason: 'stream_event' };
+  }
+
   const messageType = getMessageType(parsed);
-  const msgId =
-    (parsed as { uuid?: string; id?: string }).uuid ||
-    (parsed as { uuid?: string; id?: string }).id ||
-    uuid();
+  // Extract message ID - try different locations based on message type
+  // For assistant messages, prefer message.id (the Anthropic message ID) so that
+  // partial messages and final messages use the same ID for client-side replacement.
+  // Other message types use uuid or id as before.
+  const parsedObj = parsed as {
+    uuid?: string;
+    id?: string;
+    message?: { id?: string };
+    type?: string;
+  };
+  let msgId: string;
+  if (parsedObj.type === 'assistant' && parsedObj.message?.id) {
+    // For assistant messages, use the Anthropic message ID for consistency with partial messages
+    msgId = parsedObj.message.id;
+  } else {
+    // For other messages, use uuid, id, or generate one
+    msgId = parsedObj.uuid || parsedObj.id || uuid();
+  }
 
   // Check if message already exists (can happen after server restart)
   const existing = await prisma.message.findUnique({
@@ -248,6 +490,66 @@ async function saveMessageIfNotExists(
     }
     throw err;
   }
+}
+
+/**
+ * Process a line from Claude's output, handling both regular messages and stream events.
+ * Stream events are processed to emit partial message updates via SSE.
+ * Regular messages are saved to the database and emitted via SSE.
+ *
+ * @returns The new sequence number (incremented if a message was saved)
+ */
+async function processOutputLine(
+  sessionId: string,
+  line: string,
+  sequence: number
+): Promise<{ newSequence: number; saved: boolean }> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    log.warn('processOutputLine: Failed to parse JSON', {
+      sessionId,
+      line: line.slice(0, 100),
+    });
+    return { newSequence: sequence, saved: false };
+  }
+
+  // Handle stream_event messages for partial updates
+  if (isStreamEvent(parsed)) {
+    const partialResult = processStreamEvent(sessionId, parsed);
+
+    if (partialResult) {
+      // Emit partial message update via SSE
+      // We use a temporary sequence number (-1) since this isn't saved to DB
+      // The client will use the message ID for deduplication/replacement
+      sseEvents.emitNewMessage(sessionId, {
+        id: partialResult.messageId,
+        sessionId,
+        sequence: -1, // Temporary, will be replaced by final message
+        type: 'assistant',
+        content: partialResult.content,
+        createdAt: new Date(),
+      });
+    }
+
+    return { newSequence: sequence, saved: false };
+  }
+
+  // Handle regular messages - save to DB
+  const result = await saveMessageIfNotExists(sessionId, line, sequence);
+  if (result.saved) {
+    log.debug('processOutputLine: Saved message', { sessionId, sequence: result.sequence });
+    sseEvents.emitNewMessage(sessionId, result.message);
+    return { newSequence: result.sequence + 1, saved: true };
+  } else if (result.reason === 'parse_error') {
+    log.warn('processOutputLine: Failed to parse JSON', {
+      sessionId,
+      line: line.slice(0, 100),
+    });
+  }
+
+  return { newSequence: sequence, saved: false };
 }
 
 function getOutputFileName(sessionId: string): string {
@@ -346,6 +648,7 @@ export async function runClaudeCommand(
     '--output-format',
     'stream-json',
     '--verbose',
+    '--include-partial-messages', // Stream within-message updates
     '--dangerously-skip-permissions',
     '--append-system-prompt',
     SYSTEM_PROMPT,
@@ -445,21 +748,13 @@ export async function runClaudeCommand(
           if (!line.trim()) continue;
           totalLines++;
 
-          const result = await saveMessageIfNotExists(sessionId, line, sequence);
+          const result = await processOutputLine(sessionId, line, sequence);
           if (result.saved) {
-            sequence = result.sequence + 1;
-            log.debug('runClaudeCommand: Saved message', { sessionId, sequence: result.sequence });
-            // Emit new message event
-            sseEvents.emitNewMessage(sessionId, result.message);
+            sequence = result.newSequence;
             // Update last processed sequence for recovery
             await prisma.claudeProcess
-              .update({ where: { sessionId }, data: { lastSequence: result.sequence } })
+              .update({ where: { sessionId }, data: { lastSequence: sequence - 1 } })
               .catch(() => {});
-          } else if (result.reason === 'parse_error') {
-            log.warn('runClaudeCommand: Failed to parse JSON', {
-              sessionId,
-              line: line.slice(0, 100),
-            });
           }
         }
       });
@@ -489,10 +784,9 @@ export async function runClaudeCommand(
 
               for (let i = totalLines; i < allLines.length; i++) {
                 const line = allLines[i];
-                const result = await saveMessageIfNotExists(sessionId, line, sequence);
+                const result = await processOutputLine(sessionId, line, sequence);
                 if (result.saved) {
-                  sequence = result.sequence + 1;
-                  sseEvents.emitNewMessage(sessionId, result.message);
+                  sequence = result.newSequence;
                 }
                 totalLines++;
               }
@@ -853,11 +1147,10 @@ async function processOutputFileWithPid(
           if (!line.trim()) continue;
           totalLines++;
 
-          const result = await saveMessageIfNotExists(sessionId, line, sequence);
+          const result = await processOutputLine(sessionId, line, sequence);
           if (result.saved) {
-            sequence = result.sequence + 1;
-            sseEvents.emitNewMessage(sessionId, result.message);
-            await updateLastSequence(sessionId, result.sequence);
+            sequence = result.newSequence;
+            await updateLastSequence(sessionId, sequence - 1);
           }
         }
       });
@@ -903,10 +1196,9 @@ async function processOutputFileWithPid(
 
               for (let i = totalLines; i < allLines.length; i++) {
                 const line = allLines[i];
-                const result = await saveMessageIfNotExists(sessionId, line, sequence);
+                const result = await processOutputLine(sessionId, line, sequence);
                 if (result.saved) {
-                  sequence = result.sequence + 1;
-                  sseEvents.emitNewMessage(sessionId, result.message);
+                  sequence = result.newSequence;
                 }
                 totalLines++;
               }

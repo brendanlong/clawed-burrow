@@ -953,6 +953,7 @@ describe('claude-runner service', () => {
       expect(command).toContain('--output-format');
       expect(command).toContain('stream-json');
       expect(command).toContain('--verbose');
+      expect(command).toContain('--include-partial-messages');
       expect(command).toContain('--dangerously-skip-permissions');
       expect(command).toContain('--append-system-prompt');
     });

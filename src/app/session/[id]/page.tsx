@@ -200,15 +200,25 @@ function useSessionMessages(sessionId: string) {
             };
           }
 
-          // Check if message already exists (deduplication)
-          for (const page of old.pages) {
-            if (page.messages.some((m) => m.id === newMessage.id)) {
-              return old; // Already have this message
+          // Check if message already exists - if so, replace it (for partial message updates)
+          let messageReplaced = false;
+          const newPages = old.pages.map((page) => {
+            const existingIndex = page.messages.findIndex((m) => m.id === newMessage.id);
+            if (existingIndex !== -1) {
+              // Replace existing message with updated content
+              messageReplaced = true;
+              const updatedMessages = [...page.messages];
+              updatedMessages[existingIndex] = newMessage;
+              return { ...page, messages: updatedMessages };
             }
+            return page;
+          });
+
+          if (messageReplaced) {
+            return { ...old, pages: newPages };
           }
 
-          // Prepend message to the first page (newest messages)
-          const newPages = [...old.pages];
+          // New message - append to the first page (newest messages)
           newPages[0] = {
             ...newPages[0],
             messages: [...newPages[0].messages, newMessage],
@@ -218,7 +228,10 @@ function useSessionMessages(sessionId: string) {
         });
 
         // Refetch token usage since new messages affect the total
-        refetchTokenUsage();
+        // Only refetch if this is not a partial message (sequence >= 0 means it's saved to DB)
+        if (newMessage.sequence >= 0) {
+          refetchTokenUsage();
+        }
       },
       onError: (err) => {
         console.error('Message SSE error:', err);
