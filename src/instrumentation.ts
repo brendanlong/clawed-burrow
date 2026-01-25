@@ -9,6 +9,7 @@ export async function register() {
     const { reconcileOrphanedProcesses } = await import('@/server/services/claude-runner');
     const { reconcileSessionsWithPodman, startBackgroundReconciliation } =
       await import('@/server/services/session-reconciler');
+    const { startCredentialWatcher } = await import('@/server/services/credential-watcher');
 
     console.log('Starting server - reconciling sessions with Podman...');
 
@@ -50,5 +51,9 @@ export async function register() {
 
     // Start background polling for container state changes
     startBackgroundReconciliation();
+
+    // Start watching Claude auth files for changes
+    // When credentials change on the host, they are automatically pushed to all running containers
+    startCredentialWatcher();
   }
 }

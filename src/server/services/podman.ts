@@ -606,7 +606,7 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
  * Only copies essential auth files, not the entire .claude directory (which contains
  * large directories like file-history that aren't needed and can cause copy errors).
  */
-async function copyClaudeAuth(containerId: string): Promise<void> {
+export async function copyClaudeAuth(containerId: string): Promise<void> {
   const claudeAuthDir = env.CLAUDE_AUTH_PATH;
 
   // Only use sudo when running inside a container (where bind-mounted files may have
