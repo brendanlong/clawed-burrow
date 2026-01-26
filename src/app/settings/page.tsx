@@ -4,6 +4,7 @@ import { AuthGuard } from '@/components/AuthGuard';
 import { Header } from '@/components/Header';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AuthSessionsTab } from '@/components/settings/AuthSessionsTab';
+import { AppearanceTab } from '@/components/settings/AppearanceTab';
 
 export default function SettingsPage() {
   return (
@@ -15,10 +16,15 @@ export default function SettingsPage() {
           <div className="px-4 py-6 sm:px-0">
             <h1 className="text-2xl font-bold mb-6">Settings</h1>
 
-            <Tabs defaultValue="sessions">
+            <Tabs defaultValue="appearance">
               <TabsList className="mb-4">
+                <TabsTrigger value="appearance">Appearance</TabsTrigger>
                 <TabsTrigger value="sessions">Sessions</TabsTrigger>
               </TabsList>
+
+              <TabsContent value="appearance">
+                <AppearanceTab />
+              </TabsContent>
 
               <TabsContent value="sessions">
                 <AuthSessionsTab />
