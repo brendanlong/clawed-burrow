@@ -12,6 +12,8 @@ import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useNotification } from '@/hooks/useNotification';
+import { useWorkingIndicator } from '@/hooks/useWorkingIndicator';
+import { useWorkingContext } from '@/lib/working-context';
 
 interface Message {
   id: string;
@@ -310,43 +312,6 @@ function useWorkCompleteNotification(
 }
 
 /**
- * Hook for managing working indicator state: page title and favicon based on Claude running status.
- * Includes cleanup to reset title and favicon when the component unmounts.
- */
-function useWorkingIndicator(sessionName: string | undefined, isWorking: boolean) {
-  // Dynamic page title based on Claude running state
-  useEffect(() => {
-    if (!sessionName) return;
-    const baseTitle = `${sessionName} - Clawed Abode`;
-    document.title = isWorking ? `Working - ${baseTitle}` : baseTitle;
-
-    return () => {
-      document.title = 'Clawed Abode';
-    };
-  }, [sessionName, isWorking]);
-
-  // Dynamic favicon based on Claude running state
-  useEffect(() => {
-    const faviconPath = isWorking ? '/favicon-working.svg' : '/favicon.svg';
-    let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    if (!link) {
-      link = document.createElement('link');
-      link.rel = 'icon';
-      link.type = 'image/svg+xml';
-      document.head.appendChild(link);
-    }
-    link.href = faviconPath;
-
-    return () => {
-      const linkEl = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-      if (linkEl) {
-        linkEl.href = '/favicon.svg';
-      }
-    };
-  }, [isWorking]);
-}
-
-/**
  * Hook for managing Claude process state: running status, send prompts, and interrupt.
  */
 function useClaudeState(sessionId: string) {
@@ -435,6 +400,13 @@ function SessionView({ sessionId }: { sessionId: string }) {
 
   // Working indicator: page title and favicon
   useWorkingIndicator(session?.name, isClaudeRunning);
+
+  // Update global working state for the header logo
+  const { setWorking } = useWorkingContext();
+  useEffect(() => {
+    setWorking(isClaudeRunning);
+    return () => setWorking(false);
+  }, [isClaudeRunning, setWorking]);
 
   // Request notification permission on mount
   const { requestPermission, permission, showNotification } = useNotification();

@@ -2,17 +2,21 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
+import { useWorkingContext } from '@/lib/working-context';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Logo } from '@/components/Logo';
 
 export function Header() {
   const { isAuthenticated, logout } = useAuth();
+  const { isWorking } = useWorkingContext();
 
   return (
     <header className="bg-background border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <Link href="/" className="flex items-center space-x-2">
+            <Logo isWorking={isWorking} size={28} />
             <span className="text-xl font-bold">
               Clawed Abode
               <TooltipProvider>
