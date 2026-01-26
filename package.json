@@ -1,7 +1,7 @@
 {
   "name": "clawed-abode",
   "version": "1.0.0",
-  "description": "A place for clawed creatures run far from the cloud",
+  "description": "A web interface for Claude Code running on your own machine",
   "private": true,
   "scripts": {
     "dev": "next dev",

@@ -4,7 +4,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Clawed Abode',
-  description: 'A place for clawed creatures that run far from the cloud',
+  description: 'A web interface for Claude Code running on your own machine',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
