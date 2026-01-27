@@ -366,7 +366,7 @@ export async function cloneRepoInVolume(config: CloneConfig): Promise<CloneResul
 
     try {
       // Clone the repository, using --reference if cache is available
-      // --dissociate ensures the clone is independent even if the cache is deleted later
+      // Alternates are safe - the cache is managed by us and git handles concurrent access
       const cloneArgs = [
         'exec',
         containerId,
@@ -375,7 +375,7 @@ export async function cloneRepoInVolume(config: CloneConfig): Promise<CloneResul
         '--branch',
         config.branch,
         '--single-branch',
-        ...(useCache ? ['--reference', cachePath, '--dissociate'] : []),
+        ...(useCache ? ['--reference', cachePath] : []),
         repoUrl,
         repoName,
       ];
@@ -512,6 +512,8 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     volumeArgs.push('-v', `${env.PNPM_STORE_VOLUME}:/pnpm-store`);
     // Mount shared Gradle cache volume
     volumeArgs.push('-v', `${env.GRADLE_CACHE_VOLUME}:/gradle-cache`);
+    // Mount git cache volume (read-only) for alternates support
+    volumeArgs.push('-v', `${env.GIT_CACHE_VOLUME}:/cache:ro`);
 
     // Mount host's podman socket for container-in-container support (read-only)
     if (env.PODMAN_SOCKET_PATH) {
