@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
+import { useTheme } from '@/lib/theme-context';
 
 interface LogoProps {
   /** Whether to show the animated (working) version */
@@ -12,14 +13,25 @@ interface LogoProps {
   className?: string;
 }
 
+function getLogoSrc(isWorking: boolean, isDark: boolean): string {
+  if (isWorking) {
+    return isDark ? '/favicon-working-dark.svg' : '/favicon-working.svg';
+  }
+  return isDark ? '/favicon-dark.svg' : '/favicon.svg';
+}
+
 /**
  * Logo component that displays the Clawed Abode logo.
  * Shows an animated version when isWorking is true.
+ * Uses the dark variant in dark mode.
  */
 export function Logo({ isWorking = false, size = 24, className }: LogoProps) {
+  const { theme } = useTheme();
+  const src = getLogoSrc(isWorking, theme === 'dark');
+
   return (
     <Image
-      src={isWorking ? '/favicon-working.svg' : '/favicon.svg'}
+      src={src}
       alt={isWorking ? 'Clawed Abode logo (working)' : 'Clawed Abode logo'}
       width={size}
       height={size}
