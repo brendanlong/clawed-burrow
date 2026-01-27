@@ -88,17 +88,21 @@ export const authRouter = router({
     }),
 
   logout: protectedProcedure.mutation(async ({ ctx }) => {
-    // Delete the current session
-    await prisma.authSession.delete({
+    // Revoke the current session instead of deleting
+    await prisma.authSession.update({
       where: { id: ctx.sessionId },
+      data: { revokedAt: new Date() },
     });
 
     return { success: true };
   }),
 
   logoutAll: protectedProcedure.mutation(async () => {
-    // Delete all sessions (logs out everywhere)
-    await prisma.authSession.deleteMany({});
+    // Revoke all non-revoked sessions
+    await prisma.authSession.updateMany({
+      where: { revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
 
     return { success: true };
   }),
@@ -110,6 +114,7 @@ export const authRouter = router({
         createdAt: true,
         expiresAt: true,
         lastActivityAt: true,
+        revokedAt: true,
         ipAddress: true,
         userAgent: true,
       },
@@ -127,16 +132,18 @@ export const authRouter = router({
   deleteSession: protectedProcedure
     .input(z.object({ sessionId: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      // Prevent deleting current session via this endpoint
+      // Prevent revoking current session via this endpoint
       if (input.sessionId === ctx.sessionId) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Use logout to delete your current session',
+          message: 'Use logout to revoke your current session',
         });
       }
 
-      await prisma.authSession.delete({
+      // Revoke the session instead of deleting
+      await prisma.authSession.update({
         where: { id: input.sessionId },
+        data: { revokedAt: new Date() },
       });
 
       return { success: true };

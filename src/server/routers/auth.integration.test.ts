@@ -135,7 +135,7 @@ describe('authRouter integration', () => {
   });
 
   describe('logout', () => {
-    it('should delete the current session from the database', async () => {
+    it('should mark the current session as revoked', async () => {
       // First login to create a session
       const loginCaller = createCaller(null);
       const loginResult = await loginCaller.auth.login({ password: TEST_PASSWORD });
@@ -145,19 +145,26 @@ describe('authRouter integration', () => {
         where: { token: loginResult.token },
       });
       expect(session).toBeDefined();
+      expect(session!.revokedAt).toBeNull();
 
       // Now logout using that session
       const logoutCaller = createCaller(session!.id);
+      const beforeLogout = Date.now();
       const result = await logoutCaller.auth.logout();
 
       expect(result).toEqual({ success: true });
 
-      // Verify session was deleted
-      const remainingSessions = await testPrisma.authSession.findMany();
-      expect(remainingSessions).toHaveLength(0);
+      // Verify session was marked as revoked (not deleted)
+      const revokedSession = await testPrisma.authSession.findFirst({
+        where: { id: session!.id },
+      });
+      expect(revokedSession).toBeDefined();
+      expect(revokedSession!.revokedAt).toBeDefined();
+      expect(revokedSession!.revokedAt!.getTime()).toBeGreaterThanOrEqual(beforeLogout);
+      expect(revokedSession!.revokedAt!.getTime()).toBeLessThanOrEqual(Date.now());
     });
 
-    it('should only delete the current session, not others', async () => {
+    it('should only revoke the current session, not others', async () => {
       const loginCaller = createCaller(null);
 
       // Create 3 sessions
@@ -173,10 +180,17 @@ describe('authRouter integration', () => {
       const logoutCaller = createCaller(sessionToLogout!.id);
       await logoutCaller.auth.logout();
 
-      // Should have 2 sessions remaining
+      // Should still have 3 sessions in database
       const remaining = await testPrisma.authSession.findMany();
-      expect(remaining).toHaveLength(2);
-      expect(remaining.find((s) => s.id === sessionToLogout!.id)).toBeUndefined();
+      expect(remaining).toHaveLength(3);
+
+      // Only the logged out session should be revoked
+      const revokedSession = remaining.find((s) => s.id === sessionToLogout!.id);
+      expect(revokedSession!.revokedAt).toBeDefined();
+
+      // Other sessions should not be revoked
+      const otherSessions = remaining.filter((s) => s.id !== sessionToLogout!.id);
+      expect(otherSessions.every((s) => s.revokedAt === null)).toBe(true);
     });
 
     it('should require authentication', async () => {
@@ -189,7 +203,7 @@ describe('authRouter integration', () => {
   });
 
   describe('logoutAll', () => {
-    it('should delete all sessions from the database', async () => {
+    it('should mark all sessions as revoked', async () => {
       const loginCaller = createCaller(null);
 
       // Create multiple sessions
@@ -203,13 +217,20 @@ describe('authRouter integration', () => {
 
       // Logout all
       const caller = createCaller(currentSession!.id);
+      const beforeLogout = Date.now();
       const result = await caller.auth.logoutAll();
 
       expect(result).toEqual({ success: true });
 
-      // All sessions should be deleted
+      // All sessions should still exist but be revoked
       const remaining = await testPrisma.authSession.findMany();
-      expect(remaining).toHaveLength(0);
+      expect(remaining).toHaveLength(3);
+      expect(remaining.every((s) => s.revokedAt !== null)).toBe(true);
+      expect(
+        remaining.every(
+          (s) => s.revokedAt!.getTime() >= beforeLogout && s.revokedAt!.getTime() <= Date.now()
+        )
+      ).toBe(true);
     });
 
     it('should require authentication', async () => {
@@ -222,7 +243,7 @@ describe('authRouter integration', () => {
   });
 
   describe('listSessions', () => {
-    it('should list all sessions with isCurrent flag and lastActivityAt', async () => {
+    it('should list all sessions including revoked ones with isCurrent flag and lastActivityAt', async () => {
       const loginCaller = createCaller(null);
       const beforeLogin = Date.now();
 
@@ -232,7 +253,7 @@ describe('authRouter integration', () => {
         ipAddress: '192.168.1.1',
         userAgent: 'Chrome',
       });
-      await loginCaller.auth.login({
+      const session2 = await loginCaller.auth.login({
         password: TEST_PASSWORD,
         ipAddress: '192.168.1.2',
         userAgent: 'Firefox',
@@ -243,6 +264,15 @@ describe('authRouter integration', () => {
         userAgent: 'Safari',
       });
 
+      // Revoke one session
+      const sessionToRevoke = await testPrisma.authSession.findFirst({
+        where: { token: session2.token },
+      });
+      await testPrisma.authSession.update({
+        where: { id: sessionToRevoke!.id },
+        data: { revokedAt: new Date() },
+      });
+
       const currentSession = await testPrisma.authSession.findFirst({
         where: { token: session1.token },
       });
@@ -250,6 +280,7 @@ describe('authRouter integration', () => {
       const caller = createCaller(currentSession!.id);
       const result = await caller.auth.listSessions();
 
+      // Should list all 3 sessions including the revoked one
       expect(result.sessions).toHaveLength(3);
 
       // Find the current session in the results
@@ -258,9 +289,15 @@ describe('authRouter integration', () => {
       expect(current!.isCurrent).toBe(true);
       expect(current!.ipAddress).toBe('192.168.1.1');
       expect(current!.userAgent).toBe('Chrome');
+      expect(current!.revokedAt).toBeNull();
       // Verify lastActivityAt is included
       expect(current!.lastActivityAt).toBeDefined();
       expect(current!.lastActivityAt.getTime()).toBeGreaterThanOrEqual(beforeLogin);
+
+      // Find the revoked session
+      const revoked = result.sessions.find((s) => s.id === sessionToRevoke!.id);
+      expect(revoked).toBeDefined();
+      expect(revoked!.revokedAt).toBeDefined();
 
       // Other sessions should not be current
       const others = result.sessions.filter((s) => s.id !== currentSession!.id);
@@ -279,7 +316,7 @@ describe('authRouter integration', () => {
   });
 
   describe('deleteSession', () => {
-    it('should delete another session', async () => {
+    it('should mark another session as revoked', async () => {
       const loginCaller = createCaller(null);
 
       const session1 = await loginCaller.auth.login({ password: TEST_PASSWORD });
@@ -293,19 +330,29 @@ describe('authRouter integration', () => {
       });
 
       const caller = createCaller(currentSession!.id);
+      const beforeRevoke = Date.now();
       const result = await caller.auth.deleteSession({
         sessionId: otherSession!.id,
       });
 
       expect(result).toEqual({ success: true });
 
-      // Other session should be deleted
+      // Both sessions should still exist in database
       const remaining = await testPrisma.authSession.findMany();
-      expect(remaining).toHaveLength(1);
-      expect(remaining[0].id).toBe(currentSession!.id);
+      expect(remaining).toHaveLength(2);
+
+      // Other session should be revoked
+      const revokedSession = remaining.find((s) => s.id === otherSession!.id);
+      expect(revokedSession).toBeDefined();
+      expect(revokedSession!.revokedAt).toBeDefined();
+      expect(revokedSession!.revokedAt!.getTime()).toBeGreaterThanOrEqual(beforeRevoke);
+
+      // Current session should not be revoked
+      const currentStillActive = remaining.find((s) => s.id === currentSession!.id);
+      expect(currentStillActive!.revokedAt).toBeNull();
     });
 
-    it('should prevent deleting current session', async () => {
+    it('should prevent revoking current session', async () => {
       const loginCaller = createCaller(null);
       const loginResult = await loginCaller.auth.login({ password: TEST_PASSWORD });
 
@@ -319,12 +366,15 @@ describe('authRouter integration', () => {
         caller.auth.deleteSession({ sessionId: currentSession!.id })
       ).rejects.toMatchObject({
         code: 'BAD_REQUEST',
-        message: 'Use logout to delete your current session',
+        message: 'Use logout to revoke your current session',
       });
 
-      // Session should still exist
-      const remaining = await testPrisma.authSession.findMany();
-      expect(remaining).toHaveLength(1);
+      // Session should still exist and not be revoked
+      const session = await testPrisma.authSession.findFirst({
+        where: { id: currentSession!.id },
+      });
+      expect(session).toBeDefined();
+      expect(session!.revokedAt).toBeNull();
     });
 
     it('should require authentication', async () => {

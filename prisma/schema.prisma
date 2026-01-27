@@ -8,11 +8,12 @@ datasource db {
 }
 
 model AuthSession {
-  id             String   @id @default(uuid())
-  token          String   @unique
+  id             String    @id @default(uuid())
+  token          String    @unique
   expiresAt      DateTime
-  lastActivityAt DateTime @default(now())
-  createdAt      DateTime @default(now())
+  lastActivityAt DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  revokedAt      DateTime? // When the session was revoked (null if not revoked)
   ipAddress      String?
   userAgent      String?
 

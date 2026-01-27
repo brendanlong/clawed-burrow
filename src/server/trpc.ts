@@ -27,7 +27,7 @@ export async function createContext(opts: { headers: Headers }): Promise<Context
 
   const session = await prisma.authSession.findUnique({
     where: { token },
-    select: { id: true, expiresAt: true, lastActivityAt: true },
+    select: { id: true, expiresAt: true, lastActivityAt: true, revokedAt: true },
   });
 
   if (!session) {
@@ -35,6 +35,11 @@ export async function createContext(opts: { headers: Headers }): Promise<Context
   }
 
   const now = new Date();
+
+  // Check if session has been revoked
+  if (session.revokedAt) {
+    return { sessionId: null, rotatedToken: null };
+  }
 
   // Check if session has expired
   if (session.expiresAt < now) {
