@@ -6,6 +6,9 @@ const envSchema = z.object({
   // Claude Code OAuth token (run `claude setup-token` to generate)
   // Lasts for 1 year and is simpler than copying auth files
   CLAUDE_CODE_OAUTH_TOKEN: z.string(),
+  // Claude model to use in runner containers (e.g., "opus", "sonnet", "claude-opus-4-5-20251101")
+  // Passed as --model to the claude CLI
+  CLAUDE_MODEL: z.string().default('opus'),
   // Named volume for pnpm store - shared across all runner containers
   // Speeds up package installs by caching downloaded packages
   PNPM_STORE_VOLUME: z.string().default('clawed-abode-pnpm-store'),

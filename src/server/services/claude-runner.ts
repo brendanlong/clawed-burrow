@@ -19,6 +19,7 @@ import { getMessageType } from '@/lib/claude-messages';
 import { v4 as uuid, v5 as uuidv5 } from 'uuid';
 import { sseEvents } from './events';
 import { createLogger, toError } from '@/lib/logger';
+import { env } from '@/lib/env';
 
 // Namespace UUID for generating deterministic IDs from error line content
 const ERROR_LINE_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
@@ -340,6 +341,8 @@ export async function runClaudeCommand(
   const isFirstMessage = !lastMessage;
   const command = [
     'claude',
+    '--model',
+    env.CLAUDE_MODEL,
     '-p',
     prompt,
     ...(isFirstMessage ? ['--session-id', sessionId] : ['--resume', sessionId]),
