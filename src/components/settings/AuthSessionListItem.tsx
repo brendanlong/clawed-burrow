@@ -19,8 +19,7 @@ import type { AuthSession } from '@/hooks/useAuthSessions';
 
 interface AuthSessionListItemProps {
   session: AuthSession;
-  isExpired: boolean;
-  onExpire: (sessionId: string) => Promise<void>;
+  onRevoke: (sessionId: string) => Promise<void>;
 }
 
 function formatDate(date: Date): string {
@@ -75,15 +74,20 @@ function parseUserAgent(userAgent: string | null): string {
   return `${browser} on ${os}`;
 }
 
-export function AuthSessionListItem({ session, isExpired, onExpire }: AuthSessionListItemProps) {
-  const [isExpiring, setIsExpiring] = useState(false);
+export function AuthSessionListItem({ session, onRevoke }: AuthSessionListItemProps) {
+  const [isRevoking, setIsRevoking] = useState(false);
 
-  const handleExpire = async () => {
-    setIsExpiring(true);
+  const now = new Date();
+  const isRevoked = !!session.revokedAt;
+  const isExpired = new Date(session.expiresAt) <= now;
+  const isActive = !isRevoked && !isExpired;
+
+  const handleRevoke = async () => {
+    setIsRevoking(true);
     try {
-      await onExpire(session.id);
+      await onRevoke(session.id);
     } finally {
-      setIsExpiring(false);
+      setIsRevoking(false);
     }
   };
 
@@ -98,7 +102,12 @@ export function AuthSessionListItem({ session, isExpired, onExpire }: AuthSessio
                 Current session
               </Badge>
             )}
-            {isExpired && (
+            {isRevoked && (
+              <Badge variant="outline" className="text-xs text-muted-foreground">
+                Revoked
+              </Badge>
+            )}
+            {isExpired && !isRevoked && (
               <Badge variant="outline" className="text-xs text-muted-foreground">
                 Expired
               </Badge>
@@ -108,6 +117,7 @@ export function AuthSessionListItem({ session, isExpired, onExpire }: AuthSessio
           <div className="text-xs text-muted-foreground space-y-0.5">
             {session.ipAddress && <p>IP: {session.ipAddress}</p>}
             <p>Last active: {formatRelativeTime(session.lastActivityAt)}</p>
+            {isRevoked && session.revokedAt && <p>Revoked: {formatDate(session.revokedAt)}</p>}
             <p>
               {isExpired ? 'Expired' : 'Expires'}: {formatDate(session.expiresAt)}
             </p>
@@ -115,16 +125,16 @@ export function AuthSessionListItem({ session, isExpired, onExpire }: AuthSessio
           </div>
         </div>
 
-        {!session.isCurrent && !isExpired && (
+        {!session.isCurrent && isActive && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm" disabled={isExpiring}>
-                {isExpiring ? <Spinner size="sm" /> : 'Expire'}
+              <Button variant="outline" size="sm" disabled={isRevoking}>
+                {isRevoking ? <Spinner size="sm" /> : 'Revoke'}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Expire this session?</AlertDialogTitle>
+                <AlertDialogTitle>Revoke this session?</AlertDialogTitle>
                 <AlertDialogDescription>
                   This will immediately log out this session. The device will need to log in again
                   to access the application.
@@ -132,7 +142,7 @@ export function AuthSessionListItem({ session, isExpired, onExpire }: AuthSessio
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleExpire}>Expire session</AlertDialogAction>
+                <AlertDialogAction onClick={handleRevoke}>Revoke session</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

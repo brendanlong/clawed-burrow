@@ -13,7 +13,7 @@ import { trpc } from '@/lib/trpc';
  * Shows active sessions with ability to expire them, and a toggle to show expired sessions.
  */
 export function AuthSessionsTab() {
-  const [showExpired, setShowExpired] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   const { sessions, isLoading, refetch } = useAuthSessions();
 
   const deleteMutation = trpc.auth.deleteSession.useMutation({
@@ -22,7 +22,7 @@ export function AuthSessionsTab() {
     },
   });
 
-  const handleExpireSession = async (sessionId: string) => {
+  const handleRevokeSession = async (sessionId: string) => {
     await deleteMutation.mutateAsync({ sessionId });
   };
 
@@ -35,8 +35,10 @@ export function AuthSessionsTab() {
   }
 
   const now = new Date();
-  const activeSessions = sessions.filter((s) => new Date(s.expiresAt) > now);
-  const expiredSessions = sessions.filter((s) => new Date(s.expiresAt) <= now);
+  const isSessionActive = (s: (typeof sessions)[number]) =>
+    !s.revokedAt && new Date(s.expiresAt) > now;
+  const activeSessions = sessions.filter(isSessionActive);
+  const inactiveSessions = sessions.filter((s) => !isSessionActive(s));
 
   return (
     <div className="space-y-4">
@@ -51,8 +53,7 @@ export function AuthSessionsTab() {
                 <AuthSessionListItem
                   key={session.id}
                   session={session}
-                  isExpired={false}
-                  onExpire={handleExpireSession}
+                  onRevoke={handleRevokeSession}
                 />
               ))}
             </ul>
@@ -62,29 +63,28 @@ export function AuthSessionsTab() {
         </CardContent>
       </Card>
 
-      {/* Toggle for expired sessions */}
+      {/* Toggle for inactive sessions */}
       <div className="flex justify-center">
-        <Button variant="ghost" size="sm" onClick={() => setShowExpired(!showExpired)}>
-          {showExpired ? 'Hide expired sessions' : 'Show expired sessions'}
+        <Button variant="ghost" size="sm" onClick={() => setShowInactive(!showInactive)}>
+          {showInactive ? 'Hide inactive sessions' : 'Show inactive sessions'}
         </Button>
       </div>
 
-      {/* Expired sessions section */}
-      {showExpired && expiredSessions.length > 0 && (
+      {/* Inactive sessions section */}
+      {showInactive && inactiveSessions.length > 0 && (
         <Card>
           <CardHeader className="py-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Expired Sessions
+              Inactive Sessions
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <ul className="divide-y divide-border">
-              {expiredSessions.map((session) => (
+              {inactiveSessions.map((session) => (
                 <AuthSessionListItem
                   key={session.id}
                   session={session}
-                  isExpired={true}
-                  onExpire={handleExpireSession}
+                  onRevoke={handleRevokeSession}
                 />
               ))}
             </ul>
@@ -92,8 +92,8 @@ export function AuthSessionsTab() {
         </Card>
       )}
 
-      {showExpired && expiredSessions.length === 0 && (
-        <div className="text-center text-sm text-muted-foreground">No expired sessions</div>
+      {showInactive && inactiveSessions.length === 0 && (
+        <div className="text-center text-sm text-muted-foreground">No inactive sessions</div>
       )}
     </div>
   );
