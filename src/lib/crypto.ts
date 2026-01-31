@@ -1,15 +1,24 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'crypto';
-import { env } from './env';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const TAG_LENGTH = 16;
+const MIN_KEY_LENGTH = 32;
+
+/**
+ * Get the encryption key from environment
+ * Reads directly from process.env to support dynamic env changes in tests
+ */
+function getEncryptionKey(): string | undefined {
+  return process.env.ENCRYPTION_KEY;
+}
 
 /**
  * Check if encryption is properly configured
  */
 export function isEncryptionConfigured(): boolean {
-  return !!env.ENCRYPTION_KEY && env.ENCRYPTION_KEY.length >= 32;
+  const key = getEncryptionKey();
+  return !!key && key.length >= MIN_KEY_LENGTH;
 }
 
 /**
@@ -17,10 +26,11 @@ export function isEncryptionConfigured(): boolean {
  * Uses SHA-256 to ensure consistent key length regardless of input
  */
 function deriveKey(): Buffer {
-  if (!env.ENCRYPTION_KEY) {
+  const key = getEncryptionKey();
+  if (!key) {
     throw new Error('ENCRYPTION_KEY is not configured');
   }
-  return createHash('sha256').update(env.ENCRYPTION_KEY).digest();
+  return createHash('sha256').update(key).digest();
 }
 
 /**
