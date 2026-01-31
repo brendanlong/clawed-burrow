@@ -22,6 +22,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { Issue } from '@/lib/types';
+import { Star } from 'lucide-react';
 
 interface Repo {
   id: number;
@@ -56,7 +57,36 @@ function RepoSelector({
       }
     );
 
-  const repos = data?.pages.flatMap((p) => p.repos) || [];
+  // Fetch favorites to sort repos and show star icons
+  const { data: favoritesData } = trpc.repoSettings.listFavorites.useQuery();
+  const favorites = new Set(favoritesData?.favorites ?? []);
+
+  const toggleFavorite = trpc.repoSettings.toggleFavorite.useMutation();
+  const utils = trpc.useUtils();
+
+  const handleToggleFavorite = (e: React.MouseEvent, repoFullName: string) => {
+    e.stopPropagation(); // Don't trigger repo selection
+    const newIsFavorite = !favorites.has(repoFullName);
+    toggleFavorite.mutate(
+      { repoFullName, isFavorite: newIsFavorite },
+      {
+        onSuccess: () => {
+          utils.repoSettings.listFavorites.invalidate();
+        },
+      }
+    );
+  };
+
+  const rawRepos = data?.pages.flatMap((p) => p.repos) || [];
+
+  // Sort repos with favorites first
+  const repos = [...rawRepos].sort((a, b) => {
+    const aFav = favorites.has(a.fullName);
+    const bFav = favorites.has(b.fullName);
+    if (aFav && !bFav) return -1;
+    if (!aFav && bFav) return 1;
+    return 0;
+  });
 
   return (
     <div className="space-y-4">
@@ -79,28 +109,46 @@ function RepoSelector({
           <div className="text-center py-8 text-muted-foreground">No repositories found</div>
         ) : (
           <ul className="divide-y divide-border">
-            {repos.map((repo) => (
-              <li
-                key={repo.id}
-                onClick={() => onSelect(repo)}
-                className={cn(
-                  'px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors',
-                  selectedRepo?.id === repo.id && 'bg-primary/10'
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">{repo.fullName}</p>
-                    {repo.description && (
-                      <p className="text-xs text-muted-foreground truncate max-w-md">
-                        {repo.description}
-                      </p>
+            {repos.map((repo) => {
+              const isFavorite = favorites.has(repo.fullName);
+              return (
+                <li
+                  key={repo.id}
+                  onClick={() => onSelect(repo)}
+                  className={cn(
+                    'px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors',
+                    selectedRepo?.id === repo.id && 'bg-primary/10'
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => handleToggleFavorite(e, repo.fullName)}
+                      className="p-1 hover:bg-muted rounded transition-colors shrink-0"
+                      title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                    >
+                      <Star
+                        className={cn(
+                          'h-4 w-4',
+                          isFavorite ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground'
+                        )}
+                      />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{repo.fullName}</p>
+                      {repo.description && (
+                        <p className="text-xs text-muted-foreground truncate max-w-md">
+                          {repo.description}
+                        </p>
+                      )}
+                    </div>
+                    {repo.private && (
+                      <span className="text-xs text-muted-foreground shrink-0">Private</span>
                     )}
                   </div>
-                  {repo.private && <span className="text-xs text-muted-foreground">Private</span>}
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
             {hasNextPage && (
               <li className="px-4 py-3 text-center">
                 <Button

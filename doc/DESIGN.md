@@ -51,6 +51,9 @@ The database schema is defined in [`prisma/schema.prisma`](../prisma/schema.pris
 - **Message**: Chat messages with sequence numbers for cursor-based pagination
 - **AuthSession**: Login sessions with tokens and audit info
 - **ClaudeProcess**: Tracks running Claude processes for interrupt/resume
+- **RepoSettings**: Per-repository settings (favorites, env vars, MCP servers)
+- **EnvVar**: Environment variables for a repository (encrypted if secret)
+- **McpServer**: MCP server configurations for a repository
 
 ### Session Archiving
 
@@ -422,6 +425,28 @@ The system maintains a cache of bare git repositories to speed up session creati
 - `CONTAINER_HOST=unix:///var/run/docker.sock` is set in runner containers so `podman`/`docker` commands use the host's Podman
 - This enables Claude Code agents to build and run containers inside their sessions
 - Without this, agents would need to use nested Podman which has UID/GID mapping limitations
+
+### Per-Repository Settings & Secrets
+
+Users can configure per-repository settings that are automatically applied when creating sessions:
+
+- **Favorites**: Mark repositories as favorites so they appear at the top of the repo selector
+- **Environment Variables**: Custom env vars passed to the container (e.g., API keys, config values)
+- **MCP Servers**: Configure [MCP servers](https://modelcontextprotocol.io/) for Claude to use
+
+**Secret Encryption**: Environment variables and MCP server env vars can be marked as "secret", which:
+
+- Encrypts the value at rest using AES-256-GCM with the `ENCRYPTION_KEY` env var
+- Displays masked values (`••••••••`) in the UI
+- Decrypts values only when creating/starting containers (values are passed to containers in plaintext)
+
+**Configuration**:
+
+1. Set `ENCRYPTION_KEY` to a 32+ character random string (generate with: `openssl rand -base64 32`)
+2. Go to Settings → Repositories to manage per-repo settings
+3. Or use the star icon in the new session repo selector to toggle favorites
+
+**Implementation**: See [`src/server/routers/repoSettings.ts`](../src/server/routers/repoSettings.ts) for the API and [`src/lib/crypto.ts`](../src/lib/crypto.ts) for encryption.
 
 ## UI Screens
 

@@ -10,6 +10,7 @@ import {
   removeWorkspaceFromVolume,
   verifyContainerHealth,
 } from '../services/podman';
+import { getRepoSettingsForContainer } from '../services/repo-settings';
 import { syncSessionStatus } from '../services/session-reconciler';
 import { sseEvents } from '../services/events';
 import { createLogger, toError } from '@/lib/logger';
@@ -49,12 +50,17 @@ async function setupSession(
     // Update status
     await updateStatus('Starting container...');
 
-    // Start container with GitHub token for push/pull access
-    log.info('Starting container', { sessionId });
+    // Fetch per-repo settings (env vars, MCP servers)
+    const repoSettings = await getRepoSettingsForContainer(repoFullName);
+
+    // Start container with GitHub token for push/pull access and repo-specific settings
+    log.info('Starting container', { sessionId, hasRepoSettings: !!repoSettings });
     const containerId = await createAndStartContainer({
       sessionId,
       repoPath,
       githubToken,
+      repoEnvVars: repoSettings?.envVars,
+      mcpServers: repoSettings?.mcpServers,
     });
     log.info('Container started', { sessionId, containerId });
 
@@ -202,10 +208,20 @@ export const sessionsRouter = router({
 
       try {
         const githubToken = process.env.GITHUB_TOKEN;
+
+        // Extract repoFullName from repoUrl (e.g., "https://github.com/owner/repo.git" -> "owner/repo")
+        const repoFullNameMatch = session.repoUrl.match(/github\.com\/([^/]+\/[^/.]+)/);
+        const repoFullName = repoFullNameMatch?.[1];
+
+        // Fetch per-repo settings (env vars, MCP servers)
+        const repoSettings = repoFullName ? await getRepoSettingsForContainer(repoFullName) : null;
+
         const containerId = await createAndStartContainer({
           sessionId: session.id,
           repoPath: session.repoPath,
           githubToken,
+          repoEnvVars: repoSettings?.envVars,
+          mcpServers: repoSettings?.mcpServers,
         });
 
         const updatedSession = await prisma.session.update({

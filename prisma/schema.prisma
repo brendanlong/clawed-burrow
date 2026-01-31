@@ -67,3 +67,49 @@ model ClaudeProcess {
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
+
+// Per-repository settings for favorites, env vars, and MCP servers
+model RepoSettings {
+  id           String   @id @default(uuid())
+  repoFullName String   @unique // e.g., "owner/repo"
+  isFavorite   Boolean  @default(false)
+  displayOrder Int      @default(0) // For custom ordering within favorites
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  envVars    EnvVar[]
+  mcpServers McpServer[]
+
+  @@index([isFavorite])
+}
+
+// Environment variables for a repository (some may be encrypted secrets)
+model EnvVar {
+  id             String       @id @default(uuid())
+  repoSettingsId String
+  repoSettings   RepoSettings @relation(fields: [repoSettingsId], references: [id], onDelete: Cascade)
+  name           String // e.g., "API_KEY"
+  value          String // Encrypted if isSecret=true
+  isSecret       Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([repoSettingsId, name])
+  @@index([repoSettingsId])
+}
+
+// MCP server configurations for a repository
+model McpServer {
+  id             String       @id @default(uuid())
+  repoSettingsId String
+  repoSettings   RepoSettings @relation(fields: [repoSettingsId], references: [id], onDelete: Cascade)
+  name           String // Server name (key in mcpServers object)
+  command        String // e.g., "npx"
+  args           String? // JSON array, e.g., '["@anthropic/mcp-server-memory"]'
+  env            String? // JSON object: { "KEY": { "value": "...", "isSecret": true } }
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([repoSettingsId, name])
+  @@index([repoSettingsId])
+}

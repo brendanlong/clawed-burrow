@@ -5,6 +5,7 @@ import { Header } from '@/components/Header';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AuthSessionsTab } from '@/components/settings/AuthSessionsTab';
 import { AppearanceTab } from '@/components/settings/AppearanceTab';
+import { RepositoriesTab } from '@/components/settings/RepositoriesTab';
 
 export default function SettingsPage() {
   return (
@@ -19,11 +20,16 @@ export default function SettingsPage() {
             <Tabs defaultValue="appearance">
               <TabsList className="mb-4">
                 <TabsTrigger value="appearance">Appearance</TabsTrigger>
+                <TabsTrigger value="repositories">Repositories</TabsTrigger>
                 <TabsTrigger value="sessions">Sessions</TabsTrigger>
               </TabsList>
 
               <TabsContent value="appearance">
                 <AppearanceTab />
+              </TabsContent>
+
+              <TabsContent value="repositories">
+                <RepositoriesTab />
               </TabsContent>
 
               <TabsContent value="sessions">

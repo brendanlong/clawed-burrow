@@ -99,4 +99,8 @@ export async function clearTestDb(): Promise<void> {
   await testPrisma.message.deleteMany();
   await testPrisma.session.deleteMany();
   await testPrisma.authSession.deleteMany();
+  // Repo settings tables
+  await testPrisma.envVar.deleteMany();
+  await testPrisma.mcpServer.deleteMany();
+  await testPrisma.repoSettings.deleteMany();
 }
