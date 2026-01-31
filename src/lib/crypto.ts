@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'crypto';
+import { env } from './env';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -6,41 +7,36 @@ const TAG_LENGTH = 16;
 const MIN_KEY_LENGTH = 32;
 
 /**
- * Get the encryption key from environment
- * Reads directly from process.env to support dynamic env changes in tests
- */
-function getEncryptionKey(): string | undefined {
-  return process.env.ENCRYPTION_KEY;
-}
-
-/**
  * Check if encryption is properly configured
+ * @param key Optional encryption key. If not provided, uses ENCRYPTION_KEY from env.
  */
-export function isEncryptionConfigured(): boolean {
-  const key = getEncryptionKey();
-  return !!key && key.length >= MIN_KEY_LENGTH;
+export function isEncryptionConfigured(key?: string): boolean {
+  const effectiveKey = key ?? env.ENCRYPTION_KEY;
+  return !!effectiveKey && effectiveKey.length >= MIN_KEY_LENGTH;
 }
 
 /**
- * Derive a 32-byte key from the ENCRYPTION_KEY env var
+ * Derive a 32-byte key from the provided key or ENCRYPTION_KEY env var
  * Uses SHA-256 to ensure consistent key length regardless of input
  */
-function deriveKey(): Buffer {
-  const key = getEncryptionKey();
-  if (!key) {
+function deriveKey(key?: string): Buffer {
+  const effectiveKey = key ?? env.ENCRYPTION_KEY;
+  if (!effectiveKey) {
     throw new Error('ENCRYPTION_KEY is not configured');
   }
-  return createHash('sha256').update(key).digest();
+  return createHash('sha256').update(effectiveKey).digest();
 }
 
 /**
  * Encrypt a plaintext string using AES-256-GCM
+ * @param plaintext The string to encrypt
+ * @param key Optional encryption key. If not provided, uses ENCRYPTION_KEY from env.
  * @returns Encrypted string in format: base64(iv):base64(tag):base64(ciphertext)
  */
-export function encrypt(plaintext: string): string {
-  const key = deriveKey();
+export function encrypt(plaintext: string, key?: string): string {
+  const derivedKey = deriveKey(key);
   const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv(ALGORITHM, key, iv);
+  const cipher = createCipheriv(ALGORITHM, derivedKey, iv);
 
   let encrypted = cipher.update(plaintext, 'utf8', 'base64');
   encrypted += cipher.final('base64');
@@ -52,10 +48,11 @@ export function encrypt(plaintext: string): string {
 /**
  * Decrypt a ciphertext string encrypted with encrypt()
  * @param ciphertext String in format: base64(iv):base64(tag):base64(ciphertext)
+ * @param key Optional encryption key. If not provided, uses ENCRYPTION_KEY from env.
  * @returns Decrypted plaintext
  */
-export function decrypt(ciphertext: string): string {
-  const key = deriveKey();
+export function decrypt(ciphertext: string, key?: string): string {
+  const derivedKey = deriveKey(key);
   const parts = ciphertext.split(':');
 
   if (parts.length !== 3) {
@@ -75,7 +72,7 @@ export function decrypt(ciphertext: string): string {
     throw new Error(`Invalid tag length: expected ${TAG_LENGTH}, got ${tag.length}`);
   }
 
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
+  const decipher = createDecipheriv(ALGORITHM, derivedKey, iv);
   decipher.setAuthTag(tag);
 
   let decrypted = decipher.update(encrypted, 'base64', 'utf8');

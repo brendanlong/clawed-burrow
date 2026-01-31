@@ -1,88 +1,68 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { encrypt, decrypt, isEncryptionConfigured } from './crypto';
 
 describe('crypto', () => {
-  const originalEnv = process.env.ENCRYPTION_KEY;
+  // Use explicit key for all tests - no mocking needed
+  const TEST_KEY = 'test-encryption-key-that-is-at-least-32-chars-long';
 
-  beforeEach(() => {
-    // Reset module cache to pick up new env vars
-    vi.resetModules();
-  });
-
-  afterEach(() => {
-    process.env.ENCRYPTION_KEY = originalEnv;
-    vi.resetModules();
-  });
-
-  describe('with ENCRYPTION_KEY configured', () => {
-    beforeEach(() => {
-      // Set a valid encryption key (32+ characters)
-      process.env.ENCRYPTION_KEY = 'test-encryption-key-that-is-at-least-32-chars-long';
-    });
-
-    it('should encrypt and decrypt a simple string', async () => {
-      const { encrypt, decrypt } = await import('./crypto');
+  describe('with valid key', () => {
+    it('should encrypt and decrypt a simple string', () => {
       const plaintext = 'Hello, World!';
 
-      const encrypted = encrypt(plaintext);
-      const decrypted = decrypt(encrypted);
+      const encrypted = encrypt(plaintext, TEST_KEY);
+      const decrypted = decrypt(encrypted, TEST_KEY);
 
       expect(decrypted).toBe(plaintext);
     });
 
-    it('should encrypt and decrypt an empty string', async () => {
-      const { encrypt, decrypt } = await import('./crypto');
+    it('should encrypt and decrypt an empty string', () => {
       const plaintext = '';
 
-      const encrypted = encrypt(plaintext);
-      const decrypted = decrypt(encrypted);
+      const encrypted = encrypt(plaintext, TEST_KEY);
+      const decrypted = decrypt(encrypted, TEST_KEY);
 
       expect(decrypted).toBe(plaintext);
     });
 
-    it('should encrypt and decrypt unicode characters', async () => {
-      const { encrypt, decrypt } = await import('./crypto');
+    it('should encrypt and decrypt unicode characters', () => {
       const plaintext = '你好世界 🌍 مرحبا';
 
-      const encrypted = encrypt(plaintext);
-      const decrypted = decrypt(encrypted);
+      const encrypted = encrypt(plaintext, TEST_KEY);
+      const decrypted = decrypt(encrypted, TEST_KEY);
 
       expect(decrypted).toBe(plaintext);
     });
 
-    it('should encrypt and decrypt a long string', async () => {
-      const { encrypt, decrypt } = await import('./crypto');
+    it('should encrypt and decrypt a long string', () => {
       const plaintext = 'a'.repeat(10000);
 
-      const encrypted = encrypt(plaintext);
-      const decrypted = decrypt(encrypted);
+      const encrypted = encrypt(plaintext, TEST_KEY);
+      const decrypted = decrypt(encrypted, TEST_KEY);
 
       expect(decrypted).toBe(plaintext);
     });
 
-    it('should encrypt and decrypt JSON content', async () => {
-      const { encrypt, decrypt } = await import('./crypto');
+    it('should encrypt and decrypt JSON content', () => {
       const obj = { apiKey: 'sk-secret-123', nested: { value: true } };
       const plaintext = JSON.stringify(obj);
 
-      const encrypted = encrypt(plaintext);
-      const decrypted = decrypt(encrypted);
+      const encrypted = encrypt(plaintext, TEST_KEY);
+      const decrypted = decrypt(encrypted, TEST_KEY);
 
       expect(JSON.parse(decrypted)).toEqual(obj);
     });
 
-    it('should produce different ciphertext for same plaintext (random IV)', async () => {
-      const { encrypt } = await import('./crypto');
+    it('should produce different ciphertext for same plaintext (random IV)', () => {
       const plaintext = 'same input';
 
-      const encrypted1 = encrypt(plaintext);
-      const encrypted2 = encrypt(plaintext);
+      const encrypted1 = encrypt(plaintext, TEST_KEY);
+      const encrypted2 = encrypt(plaintext, TEST_KEY);
 
       expect(encrypted1).not.toBe(encrypted2);
     });
 
-    it('should produce ciphertext in expected format (iv:tag:data)', async () => {
-      const { encrypt } = await import('./crypto');
-      const encrypted = encrypt('test');
+    it('should produce ciphertext in expected format (iv:tag:data)', () => {
+      const encrypted = encrypt('test', TEST_KEY);
 
       const parts = encrypted.split(':');
       expect(parts).toHaveLength(3);
@@ -93,29 +73,25 @@ describe('crypto', () => {
       });
     });
 
-    it('should fail to decrypt with invalid format', async () => {
-      const { decrypt } = await import('./crypto');
-
-      expect(() => decrypt('invalid')).toThrow('Invalid ciphertext format');
-      expect(() => decrypt('a:b')).toThrow('Invalid ciphertext format');
-      expect(() => decrypt('a:b:c:d')).toThrow('Invalid ciphertext format');
+    it('should fail to decrypt with invalid format', () => {
+      expect(() => decrypt('invalid', TEST_KEY)).toThrow('Invalid ciphertext format');
+      expect(() => decrypt('a:b', TEST_KEY)).toThrow('Invalid ciphertext format');
+      expect(() => decrypt('a:b:c:d', TEST_KEY)).toThrow('Invalid ciphertext format');
     });
 
-    it('should fail to decrypt with tampered ciphertext', async () => {
-      const { encrypt, decrypt } = await import('./crypto');
-      const encrypted = encrypt('secret data');
+    it('should fail to decrypt with tampered ciphertext', () => {
+      const encrypted = encrypt('secret data', TEST_KEY);
 
       // Tamper with the encrypted data
       const parts = encrypted.split(':');
       parts[2] = Buffer.from('tampered').toString('base64');
       const tampered = parts.join(':');
 
-      expect(() => decrypt(tampered)).toThrow();
+      expect(() => decrypt(tampered, TEST_KEY)).toThrow();
     });
 
-    it('should fail to decrypt with tampered tag', async () => {
-      const { encrypt, decrypt } = await import('./crypto');
-      const encrypted = encrypt('secret data');
+    it('should fail to decrypt with tampered tag', () => {
+      const encrypted = encrypt('secret data', TEST_KEY);
 
       // Tamper with the auth tag
       const parts = encrypted.split(':');
@@ -124,45 +100,36 @@ describe('crypto', () => {
       parts[1] = tag.toString('base64');
       const tampered = parts.join(':');
 
-      expect(() => decrypt(tampered)).toThrow();
+      expect(() => decrypt(tampered, TEST_KEY)).toThrow();
     });
 
-    it('should report encryption as configured', async () => {
-      const { isEncryptionConfigured } = await import('./crypto');
-      expect(isEncryptionConfigured()).toBe(true);
-    });
-  });
+    it('should fail to decrypt with wrong key', () => {
+      const encrypted = encrypt('secret data', TEST_KEY);
+      const wrongKey = 'different-key-that-is-also-at-least-32-chars';
 
-  describe('without ENCRYPTION_KEY configured', () => {
-    beforeEach(() => {
-      delete process.env.ENCRYPTION_KEY;
+      expect(() => decrypt(encrypted, wrongKey)).toThrow();
     });
 
-    it('should report encryption as not configured', async () => {
-      const { isEncryptionConfigured } = await import('./crypto');
-      expect(isEncryptionConfigured()).toBe(false);
-    });
-
-    it('should throw when trying to encrypt', async () => {
-      const { encrypt } = await import('./crypto');
-      expect(() => encrypt('test')).toThrow('ENCRYPTION_KEY is not configured');
-    });
-
-    it('should throw when trying to decrypt', async () => {
-      const { decrypt } = await import('./crypto');
-      // Valid format but will fail because no key
-      expect(() => decrypt('aaa:bbb:ccc')).toThrow('ENCRYPTION_KEY is not configured');
+    it('should report encryption as configured with valid key', () => {
+      expect(isEncryptionConfigured(TEST_KEY)).toBe(true);
     });
   });
 
-  describe('with short ENCRYPTION_KEY', () => {
-    beforeEach(() => {
-      process.env.ENCRYPTION_KEY = 'short';
+  describe('isEncryptionConfigured', () => {
+    it('should return false for undefined key', () => {
+      expect(isEncryptionConfigured(undefined)).toBe(false);
     });
 
-    it('should report encryption as not configured', async () => {
-      const { isEncryptionConfigured } = await import('./crypto');
-      expect(isEncryptionConfigured()).toBe(false);
+    it('should return false for short key', () => {
+      expect(isEncryptionConfigured('short')).toBe(false);
+    });
+
+    it('should return false for key with exactly 31 chars', () => {
+      expect(isEncryptionConfigured('a'.repeat(31))).toBe(false);
+    });
+
+    it('should return true for key with exactly 32 chars', () => {
+      expect(isEncryptionConfigured('a'.repeat(32))).toBe(true);
     });
   });
 });
