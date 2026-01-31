@@ -4,6 +4,7 @@ import { sessionsRouter } from './sessions';
 import { claudeRouter } from './claude';
 import { githubRouter } from './github';
 import { sseRouter } from './sse';
+import { repoSettingsRouter } from './repoSettings';
 
 export const appRouter = router({
   auth: authRouter,
@@ -11,6 +12,7 @@ export const appRouter = router({
   claude: claudeRouter,
   github: githubRouter,
   sse: sseRouter,
+  repoSettings: repoSettingsRouter,
 });
 
 export type AppRouter = typeof appRouter;

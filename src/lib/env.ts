@@ -41,6 +41,10 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((val) => val === 'true' || val === '1'),
+  // 32+ character key for encrypting secrets (env vars, MCP API keys)
+  // Generate with: openssl rand -base64 32
+  // Required for storing per-repo secrets
+  ENCRYPTION_KEY: z.string().min(32).optional(),
   // Explicit Claude config JSON for MCP servers
   // If set, this JSON will be written to ~/.claude.json in runner containers
   // instead of copying the host's .claude.json (which may contain Claude.ai's

@@ -450,6 +450,14 @@ export interface ContainerConfig {
   sessionId: string;
   repoPath: string; // Relative path to repo within workspace (e.g., "my-repo")
   githubToken?: string;
+  // Per-repo settings (env vars and MCP servers)
+  repoEnvVars?: Array<{ name: string; value: string }>;
+  mcpServers?: Array<{
+    name: string;
+    command: string;
+    args?: string[];
+    env?: Record<string, string>;
+  }>;
 }
 
 export async function createAndStartContainer(config: ContainerConfig): Promise<string> {
@@ -501,6 +509,13 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     // Set CONTAINER_HOST so podman/docker commands inside the container use the host's socket
     if (env.PODMAN_SOCKET_PATH) {
       envArgs.push('-e', 'CONTAINER_HOST=unix:///var/run/docker.sock');
+    }
+
+    // Add per-repo environment variables
+    if (config.repoEnvVars) {
+      for (const envVar of config.repoEnvVars) {
+        envArgs.push('-e', `${envVar.name}=${envVar.value}`);
+      }
     }
 
     // Build volume binds
@@ -586,6 +601,11 @@ export async function createAndStartContainer(config: ContainerConfig): Promise<
     // Fix podman socket permissions if mounted
     if (env.PODMAN_SOCKET_PATH) {
       setupTasks.push(fixPodmanSocketPermissions(containerId));
+    }
+
+    // Write MCP server configuration if provided
+    if (config.mcpServers && config.mcpServers.length > 0) {
+      setupTasks.push(writeMcpConfig(containerId, config.mcpServers));
     }
 
     await Promise.all(setupTasks);
@@ -710,6 +730,51 @@ async function fixSudoPermissions(containerId: string): Promise<void> {
     'chown root:root /usr/bin/sudo && chmod 4755 /usr/bin/sudo',
   ]);
   log.info('Fixed sudo permissions', { containerId });
+}
+
+/**
+ * Write MCP server configuration to ~/.claude.json in the container.
+ * This configures Claude Code to use the specified MCP servers.
+ */
+async function writeMcpConfig(
+  containerId: string,
+  mcpServers: NonNullable<ContainerConfig['mcpServers']>
+): Promise<void> {
+  // Build the ~/.claude.json config
+  const claudeConfig = {
+    mcpServers: Object.fromEntries(
+      mcpServers.map((server) => {
+        const serverConfig: Record<string, unknown> = {
+          command: server.command,
+        };
+        if (server.args && server.args.length > 0) {
+          serverConfig.args = server.args;
+        }
+        if (server.env && Object.keys(server.env).length > 0) {
+          serverConfig.env = server.env;
+        }
+        return [server.name, serverConfig];
+      })
+    ),
+  };
+
+  const configJson = JSON.stringify(claudeConfig, null, 2);
+
+  // Write to container using a heredoc to handle special characters safely
+  // The 'EOF' is quoted to prevent shell expansion inside the heredoc
+  await runPodman([
+    'exec',
+    containerId,
+    'sh',
+    '-c',
+    `cat > /home/claudeuser/.claude.json << 'EOF'\n${configJson}\nEOF`,
+  ]);
+
+  log.info('Wrote MCP config to container', {
+    containerId,
+    serverCount: mcpServers.length,
+    servers: mcpServers.map((s) => s.name),
+  });
 }
 
 /**
